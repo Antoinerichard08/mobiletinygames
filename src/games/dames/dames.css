@@ -1,26 +1,77 @@
-/* Dames */
+/* Dames : un damier (cases cliquables) et, par-dessus, une couche de pions qui glissent. */
+.dm-body { display: flex; flex-direction: column; gap: 12px; }
+.dm-infos, .dm-side { display: flex; flex-direction: column; gap: 12px; }
+
 .dm {
-  container-type: inline-size; width: 100%; aspect-ratio: 1;
-  display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); grid-template-rows: repeat(var(--n), minmax(0, 1fr));
-  border: 4px solid var(--felt-deep); border-radius: 10px; overflow: hidden; background: var(--sq-light);
+  position: relative; width: 100%; aspect-ratio: 1; margin-inline: auto;
+  border: 5px solid var(--felt-deep); border-radius: 12px; overflow: hidden; background: var(--sq-light);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
 }
-.sq { position: relative; border: 0; padding: 0; margin: 0; display: grid; place-items: center; font-size: calc(100cqw / var(--n) * .5); border-radius: 0; }
+.dm-squares {
+  position: absolute; inset: 0; display: grid;
+  grid-template-columns: repeat(var(--n), minmax(0, 1fr)); grid-template-rows: repeat(var(--n), minmax(0, 1fr));
+}
+.sq { position: relative; border: 0; padding: 0; margin: 0; border-radius: 0; display: grid; place-items: center; }
 .sq.lt { background: var(--sq-light); }
 .sq.dk { background: var(--sq-dark); cursor: pointer; }
-.sq.last::after { content: ""; position: absolute; inset: 0; background: rgba(242, 183, 5, .3); pointer-events: none; }
+.sq.last::after { content: ""; position: absolute; inset: 0; background: rgba(242, 183, 5, .28); pointer-events: none; }
 .sq.sel { box-shadow: inset 0 0 0 4px var(--gold); }
-.sq.hint { box-shadow: inset 0 0 0 4px var(--gold), inset 0 0 0 8px rgba(0, 0, 0, .35); }
-.pc { width: 80%; height: 80%; border-radius: 50%; display: grid; place-items: center; line-height: 1; position: relative; z-index: 1; }
-.pc.w {
+.sq.hint { box-shadow: inset 0 0 0 4px var(--gold), inset 0 0 0 8px rgba(0, 0, 0, .3); }
+.sq.target::before {
+  content: ""; width: 32%; height: 32%; border-radius: 50%; background: var(--gold);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, .3); position: relative; z-index: 3; pointer-events: none;
+}
+
+.dm-pieces { position: absolute; inset: 0; pointer-events: none; }
+.pc {
+  position: absolute; left: 0; top: 0; width: calc(100% / var(--n)); height: calc(100% / var(--n));
+  display: grid; place-items: center; transform: translate(calc(var(--c) * 100%), calc(var(--r) * 100%));
+  will-change: transform; z-index: 1;
+}
+.pc.moving, .pc.lifted { z-index: 4; }
+.pc > i {
+  width: 80%; height: 80%; border-radius: 50%; display: grid; place-items: center; line-height: 1; font-style: normal;
+  font-size: calc(var(--taille-case, 40px) * .5); transition: scale .15s, box-shadow .15s;
+}
+.dm { --taille-case: calc(100cqw / var(--n)); container-type: inline-size; }
+.pc.w > i {
   background: radial-gradient(circle at 35% 30%, var(--pc-w-hi), var(--pc-w) 50%, var(--pc-w-edge));
   box-shadow: 0 2px 0 var(--pc-w-edge), 0 4px 5px rgba(0, 0, 0, .4); color: #7A6A3A;
 }
-.pc.r {
+.pc.r > i {
   background: radial-gradient(circle at 35% 30%, var(--pc-r-hi), var(--pc-r) 52%, var(--pc-r-edge));
   box-shadow: 0 2px 0 var(--pc-r-edge), 0 4px 5px rgba(0, 0, 0, .4); color: #FFDDA6;
 }
-.pc.king::before { content: "♛"; font-size: 1.1em; }
-.pc.taken { opacity: .3; }
-.pc.can { box-shadow: 0 0 0 4px var(--gold), 0 4px 5px rgba(0, 0, 0, .4); }
-.dot { width: 30%; height: 30%; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 3px rgba(0, 0, 0, .3); position: relative; z-index: 2; pointer-events: none; }
-.dm-score { display: flex; justify-content: center; gap: 18px; color: var(--muted); font-size: 1rem; }
+.pc.king > i::before { content: "♛"; font-size: calc(100cqw / var(--n) * .5); }
+.pc.taken > i { opacity: .35; }
+.pc.can > i { box-shadow: 0 0 0 4px var(--gold), 0 4px 5px rgba(0, 0, 0, .4); }
+.pc.lifted > i, .pc.moving > i { scale: 1.08; box-shadow: 0 0 0 4px var(--gold), 0 10px 14px rgba(0, 0, 0, .45); }
+
+.dm-score { text-align: center; color: var(--muted); font-size: 1rem; }
+.status .dots i { font-style: normal; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .sq.target::before { animation: dm-cible 1.2s ease-in-out infinite; }
+  .sq.hint { animation: dm-conseil 1.1s ease-in-out infinite; }
+  .status .dots i { animation: dm-points 1.2s infinite; }
+  .status .dots i:nth-child(2) { animation-delay: .2s; }
+  .status .dots i:nth-child(3) { animation-delay: .4s; }
+  @keyframes dm-cible { 50% { transform: scale(.75); opacity: .75; } }
+  @keyframes dm-conseil { 50% { box-shadow: inset 0 0 0 2px var(--gold); } }
+  @keyframes dm-points { 0%, 60%, 100% { opacity: .2; } 30% { opacity: 1; } }
+}
+
+/* Téléphone à l'horizontale : le damier à gauche sur toute la hauteur, les infos au milieu, les commandes à droite */
+@media (orientation: landscape) and (max-height: 560px) {
+  .dm-body { display: grid; grid-template-columns: auto minmax(0, 1fr) var(--cote); gap: 14px; align-items: start; }
+  .dm-plateau { grid-column: 1; grid-row: 1; }
+  .dm-infos { grid-column: 2; grid-row: 1; }
+  .dm-side { grid-column: 3; grid-row: 1; padding-top: 64px; }
+  .dm { width: calc(100vh - 24px); max-width: 55vw; }
+  .dm-infos .seg { grid-auto-flow: row; }
+  .dm-infos .seg button + button { border-inline-start: 0; border-top: 2px solid var(--line); }
+  .dm-side .tools { flex-direction: column; }
+  .dm-side .tip { display: none; }
+  .dm-side .seg { grid-auto-flow: row; }
+  .dm-side .seg button + button { border-inline-start: 0; border-top: 2px solid var(--line); }
+}
