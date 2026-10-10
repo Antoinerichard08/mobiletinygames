@@ -107,6 +107,7 @@ html.ile-ouverte, html.ile-ouverte body { overflow: hidden; overscroll-behavior:
 }
 .capsule-ic { position: absolute; right: -4px; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; display: grid; place-items: center; }
 button.capsule { cursor: pointer; font: inherit; color: #fff; }
+.capsule.petite { cursor: pointer; }
 .capsule-etoiles { border-color: #ffd23f; background: linear-gradient(90deg, rgba(16, 22, 40, .72), rgba(110, 70, 0, .8)); }
 .capsule.petite { height: 32px; min-width: 96px; font-size: 1rem; }
 .ic-etoile { display: inline-block; color: #ffc21a; filter: drop-shadow(0 1.5px 0 #7a4a00) drop-shadow(0 0 1px #7a4a00); line-height: 0; }

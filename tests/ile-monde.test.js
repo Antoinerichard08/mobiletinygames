@@ -248,3 +248,21 @@ test('vie : les habitants restent sur la terre et un bâtisseur va au chantier',
   vie.peupler(e);
   assert.equal(habitants().length, habitants().length, 'repeupler sans changement ne bouge rien');
 });
+
+test('buissons et cailloux : il y en a au départ, ils repoussent sans tout envahir, et rapportent un peu', () => {
+  const e = etatVide();
+  const ile = e.iles[0];
+  const obstacles = () => Object.values(ile.terrain).filter((x) => x === 'buisson' || x === 'caillou').length;
+  assert.equal(obstacles(), 3, 'deux buissons et des cailloux sur une île neuve');
+  const k = Object.keys(ile.terrain).find((x) => ile.terrain[x] === 'buisson');
+  assert.equal(peutDeplacer(ile, k, 0, 0), false);
+  assert.equal(amenager(e, 0, ...coord(k), 'debroussailler', 0, () => true, T0).ok, true);
+  actualiser(e, T0 + MINUTE);
+  assert.equal(terrainDe(ile, ...coord(k)), 'herbe');
+  assert.equal(e.ressources.bois, 2);
+  // trois heures plus tard, quelque chose a repoussé ; jamais plus de trois par île
+  const ev = actualiser(e, T0 + MINUTE + 3 * 60 * MINUTE + 1000);
+  assert.ok(ev.some((x) => x.genre === 'pousse'));
+  for (let h = 1; h < 40; h++) actualiser(e, T0 + h * 3 * 60 * MINUTE);
+  assert.ok(obstacles() <= 3);
+});

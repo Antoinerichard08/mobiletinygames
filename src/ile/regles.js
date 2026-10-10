@@ -100,8 +100,14 @@ export const AMENAGEMENTS = {
   planter: { nom: 'Planter des arbres', de: 'herbe', vers: 'foret', minutes: 3, gain: {}, cout: { bois: 1 }, desc: 'Une forêt pousse en quelques minutes' },
   creuser: { nom: 'Creuser un étang', de: 'herbe', vers: 'etang', minutes: 0.5, gain: {}, cout: { etoiles: 2 }, desc: 'Un étang embellit ses voisins' },
   combler: { nom: 'Combler l’étang', de: 'etang', vers: 'herbe', minutes: 0.25, gain: {}, cout: {}, desc: 'Rend la case constructible' },
+  debroussailler: { nom: 'Débroussailler', de: 'buisson', vers: 'herbe', minutes: 0.15, gain: { bois: 2 }, cout: {}, desc: 'Un peu de bois, et la place est libre' },
+  cailloux: { nom: 'Ramasser les cailloux', de: 'caillou', vers: 'herbe', minutes: 0.15, gain: { pierre: 2 }, cout: {}, desc: 'Un peu de pierre, et la place est libre' },
 };
-export const ORDRE_AMENAGEMENTS = ['abattre', 'casser', 'planter', 'creuser', 'combler'];
+export const ORDRE_AMENAGEMENTS = ['abattre', 'casser', 'planter', 'creuser', 'combler', 'debroussailler', 'cailloux'];
+/** Ce qui repousse tout seul sur l'herbe libre (comme les arbustes des jeux de construction) : vite enlevé, un peu de ressources. */
+export const OBSTACLES = ['buisson', 'caillou'];
+export const INTERVALLE_POUSSE = 3 * 60 * MINUTE;
+export const MAX_OBSTACLES = 3; // par île
 /** Beauté apportée par certains terrains. */
 const BEAUTE_TERRAIN = { etang: 3 };
 
@@ -147,9 +153,10 @@ function ileNeuve(n) {
   const terre = [];
   for (let y = 1; y <= h; y++) for (let x = 1; x <= l; x++) terre.push(cle(x, y));
   const nbForets = Math.round(terre.length * 0.16), nbMontagnes = Math.max(1, Math.round(terre.length * 0.06));
-  for (let k = 0; k < nbForets + nbMontagnes; k++) {
+  const types = [...Array(nbForets).fill('foret'), ...Array(nbMontagnes).fill('montagne'), 'buisson', 'buisson', 'caillou'];
+  for (const type of types) {
     const libres = terre.filter((c) => !terrain[c]);
-    terrain[libres[Math.floor(alea() * libres.length)]] = k < nbForets ? 'foret' : 'montagne';
+    terrain[libres[Math.floor(alea() * libres.length)]] = type;
   }
   return { ext: { x0: 1, y0: 1, x1: l, y1: h }, terrain, cases: {}, travaux: {} };
 }
@@ -376,6 +383,31 @@ export function deplacer(e, n, de, x, y) {
     delete ile.cases[de];
   }
   return { ok: true, gain };
+}
+
+// ---------- Ce qui repousse ----------
+
+/** De temps en temps, un buisson ou des cailloux apparaissent sur une herbe libre (trois au plus par île). */
+function actualiserPousses(e, t) {
+  const out = [];
+  if (e.prochainePousse === undefined) { e.prochainePousse = t + INTERVALLE_POUSSE; return out; }
+  for (let tour = 0; tour < 3 && t >= e.prochainePousse; tour++) {
+    const alea = aleaGraine(Math.floor(e.prochainePousse / 1000) % 2147483647);
+    e.prochainePousse += INTERVALLE_POUSSE;
+    const n = Math.floor(alea() * ilesOuvertes(e)), ile = e.iles[n];
+    if (Object.values(ile.terrain).filter((x) => OBSTACLES.includes(x)).length >= MAX_OBSTACLES) continue;
+    const libres = [];
+    for (let y = ile.ext.y0; y <= ile.ext.y1; y++) for (let x = ile.ext.x0; x <= ile.ext.x1; x++) {
+      const k = cle(x, y);
+      if (terrainDe(ile, x, y) === 'herbe' && !ile.cases[k] && !ile.travaux[k]) libres.push(k);
+    }
+    if (libres.length < 4) continue; // on laisse de la place pour construire
+    const k = libres[Math.floor(alea() * libres.length)];
+    ile.terrain[k] = OBSTACLES[Math.floor(alea() * OBSTACLES.length)];
+    out.push({ genre: 'pousse', n, cle: k, terrain: ile.terrain[k] });
+  }
+  if (t >= e.prochainePousse) e.prochainePousse = t + INTERVALLE_POUSSE; // longue absence : on ne rattrape pas tout
+  return out;
 }
 
 // ---------- Trésor : une bouteille à la mer ----------
@@ -616,6 +648,7 @@ export function actualiser(e, t) {
       evenements.push({ genre: 'amenage', n, cle: k, action: w.action, gain: a.gain });
     }
   });
+  evenements.push(...actualiserPousses(e, t));
   const tresor = actualiserTresor(e, t);
   if (tresor) evenements.push(tresor);
   return evenements;

@@ -32,8 +32,8 @@ chargerStyle(new URL('./ile.css', import.meta.url));
 
 const CLE = 'ile';
 const ICONES_RES = { bois: T.icones.bois, pierre: T.icones.pierre, ble: T.icones.ble };
-const OUTILS = { abattre: S.outils.hache, casser: S.outils.pioche, planter: S.pousse, creuser: S.outils.pelle, combler: S.outils.seau };
-const NOMS_TERRAIN = { herbe: 'Herbe libre', foret: 'Forêt', montagne: 'Rochers', etang: 'Étang', eau: 'Mer' };
+const OUTILS = { abattre: S.outils.hache, casser: S.outils.pioche, planter: S.pousse, creuser: S.outils.pelle, combler: S.outils.seau, debroussailler: S.outils.fourche, cailloux: S.outils.seau };
+const NOMS_TERRAIN = { herbe: 'Herbe libre', foret: 'Forêt', montagne: 'Rochers', etang: 'Étang', eau: 'Mer', buisson: 'Buisson sauvage', caillou: 'Cailloux' };
 const GUIDE = 'Rose';
 const MARGES = { haut: 70, bas: 84, gauche: 8, droite: 8 }; // la place prise par l'interface autour du monde
 // pour cadrer une île : l'interface peut déborder un peu sur la mer, mais pas sur la terre
@@ -274,6 +274,10 @@ async function tic() {
 /** Les effets quand quelque chose se termine. */
 function celebrer(ev) {
   const ile = E.iles[ev.n], [x, y] = coord(ev.cle), c = centreCase(ile, ev.n, x, y);
+  if (ev.genre === 'pousse') {
+    if (ev.n < ouvertes()) rendu.gerbe(c.x, c.y, ev.terrain === 'caillou' ? 'cailloux' : 'feuilles', temps);
+    return;
+  }
   if (ev.genre === 'tresor') {
     if (ev.n < ouvertes()) dire('Une bouteille s’est échouée sur la plage ! Touchez-la.');
     return;
@@ -287,7 +291,7 @@ function celebrer(ev) {
     dire(ev.genre === 'construit' ? `${nom} : c’est construit !` : `${nom} : niveau ${ev.niveau} !`);
     vibrer(20);
   } else {
-    rendu.gerbe(c.x, c.y, ev.action === 'casser' ? 'cailloux' : ev.action === 'creuser' || ev.action === 'combler' ? 'eau' : 'feuilles', temps);
+    rendu.gerbe(c.x, c.y, ['casser', 'cailloux'].includes(ev.action) ? 'cailloux' : ev.action === 'creuser' || ev.action === 'combler' ? 'eau' : 'feuilles', temps);
     const gain = Object.entries(ev.gain).map(([r, q]) => `+${q} ${NOMS_RESSOURCES[r]}`).join(' ');
     if (gain) {
       rendu.texte(c.x, c.y - 0.5, gain, temps);
@@ -390,7 +394,7 @@ function majRuban() {
 
 /** Les capsules de ressources : l'icône à droite, le nombre en gros, comme dans les jeux de construction. */
 function capsules() {
-  const capsule = (res, ic, classe = '') => `<span class="capsule ${classe}" data-res="${res}"><b>0</b><span class="capsule-ic">${ic}</span></span>`;
+  const capsule = (res, ic, classe = '') => `<button class="capsule ${classe}" data-res="${res}"><b>0</b><span class="capsule-ic">${ic}</span></button>`;
   return [
     `<button class="capsule capsule-etoiles" data-res="etoiles" id="ile-etoiles" aria-label="Étoiles"><b>0</b><span class="capsule-ic">${icone('etoiles', 28)}</span></button>`,
     capsule('bois', tuile(ICONES_RES.bois, 46)),
@@ -414,7 +418,8 @@ function infosCase(n, k) {
   if (E.tresor && E.tresor.n === n && E.tresor.cle === k) return { nom: 'Une bouteille !', sous: 'Touchez-la' };
   const terrain = terrainDe(ile, x, y);
   if (terrain === 'eau') return { nom: estCote(ile, x, y) ? 'Bord de mer' : 'La mer', sous: estCote(ile, x, y) && estDebloque(E, 'port') ? 'On peut y construire un port' : '' };
-  return { nom: NOMS_TERRAIN[terrain], sous: terrain === 'foret' ? 'Du bois pour les bûcherons' : terrain === 'montagne' ? 'De la pierre pour la carrière' : '' };
+  const sous = { foret: 'Du bois pour les bûcherons', montagne: 'De la pierre pour la carrière', buisson: 'Il a poussé tout seul', caillou: 'Ils gênent un peu' }[terrain] || '';
+  return { nom: NOMS_TERRAIN[terrain], sous };
 }
 
 /** Les boutons ronds proposés pour la case choisie. */
@@ -438,7 +443,7 @@ function actionsPour(n, k) {
     const a = AMENAGEMENTS[action];
     if (!peutAmenager(ile, x, y, action)) return;
     const gain = Object.entries(a.gain).map(([r, v]) => `+${v} ${NOMS_RESSOURCES[r]}`).join(' ');
-    out.push({ id: `amenager:${action}`, texte: a.nom.replace(/ (la forêt|les rochers|des arbres|un étang|l’étang)$/, ''), image: sprite(OUTILS[action], 40), couleur: 'bois', prix: Object.keys(a.cout).length ? a.cout : null, note: gain });
+    out.push({ id: `amenager:${action}`, texte: a.nom.replace(/ (la forêt|les rochers|des arbres|un étang|l’étang|les cailloux)$/, ''), image: sprite(OUTILS[action], 40), couleur: 'bois', prix: Object.keys(a.cout).length ? a.cout : null, note: gain });
   };
   if (terrain === 'herbe') {
     out.push({ id: 'construire-ici', texte: 'Construire', icone: ICONE.marteau, couleur: 'orange' });
@@ -447,6 +452,8 @@ function actionsPour(n, k) {
   } else if (terrain === 'foret') amenagement('abattre');
   else if (terrain === 'montagne') amenagement('casser');
   else if (terrain === 'etang') amenagement('combler');
+  else if (terrain === 'buisson') amenagement('debroussailler');
+  else if (terrain === 'caillou') amenagement('cailloux');
   else if (estCote(ile, x, y) && estDebloque(E, 'port')) out.push({ id: 'construire-ici', texte: 'Un port', icone: ICONE.marteau, couleur: 'orange' });
   return out;
 }
@@ -561,7 +568,7 @@ async function action(id) {
     sauver();
     rendu.pop(n, k, 'pose', temps);
     const c = centreCase(ile, n, x, y);
-    rendu.gerbe(c.x, c.y, a === 'abattre' || a === 'planter' ? 'feuilles' : a === 'casser' ? 'cailloux' : 'poussiere', temps);
+    rendu.gerbe(c.x, c.y, ['abattre', 'planter', 'debroussailler'].includes(a) ? 'feuilles' : ['casser', 'cailloux'].includes(a) ? 'cailloux' : 'poussiere', temps);
     vibrer(12);
     dire(`${AMENAGEMENTS[a].nom} : c’est parti, prêt dans ${duree(AMENAGEMENTS[a].minutes * MINUTE)}. Les habitants s’en occupent.`);
     vie.peupler(E);
@@ -695,8 +702,11 @@ function entrerModePose(pose) {
   $('#ile-valider', scene).hidden = false;
   majValider();
   volerVers(cameraPourIle(pose.n));
+  ouvrirCouche();
 }
-function sortirModePose() {
+function sortirModePose(dejaRetire = false) {
+  if (ui.mode !== 'poser' && ui.mode !== 'deplacer') return;
+  if (!dejaRetire) fermerCouche();
   ui.mode = 'libre';
   ui.pose = null;
   scene.classList.remove('en-pose');
@@ -819,8 +829,11 @@ function commencerAgrandir() {
   $('#ile-bandeau', scene).hidden = false;
   $('#ile-terminer', scene).hidden = false;
   volerVers(cameraPourIle(E.active, 2.4, CADRE_AGRANDIR));
+  ouvrirCouche();
 }
-function finirAgrandir() {
+function finirAgrandir(dejaRetire = false) {
+  if (ui.mode !== 'agrandir') return;
+  if (!dejaRetire) fermerCouche();
   ui.mode = 'libre';
   ui.agrandir = null;
   scene.classList.remove('en-pose');
@@ -870,6 +883,30 @@ async function retirerCase(n, k) {
   dire('C’est retiré : tout vous a été rendu.');
 }
 
+// ---------- Le bouton Retour du téléphone ferme d'abord ce qui est ouvert ----------
+// Chaque fenêtre (et chaque pose) ajoute une étape à l'historique, sans changer l'adresse : « Retour » la referme
+// au lieu de quitter l'île. Quand on la ferme soi-même, on retire l'étape (et l'on ignore le « popstate » qui suit).
+let couches = 0, popIgnores = 0, apresRetour = [];
+function ouvrirCouche() {
+  history.pushState({ ile: true }, '');
+  couches++;
+}
+function fermerCouche(ensuite = null) {
+  if (couches <= 0) { ensuite?.(); return; }
+  couches--;
+  popIgnores++;
+  apresRetour.push(ensuite);
+  history.back();
+}
+function surRetour() {
+  if (popIgnores) { popIgnores--; apresRetour.shift()?.(); return; }
+  if (couches <= 0 || !scene) return; // une vraie navigation : app.js s'en occupe (changement d'adresse)
+  couches--;
+  if (ui.fenetre) ui.fermerFenetre?.('', { dejaRetire: true });
+  else if (ui.mode === 'poser' || ui.mode === 'deplacer') sortirModePose(true);
+  else if (ui.mode === 'agrandir') finirAgrandir(true);
+}
+
 // ---------- Fenêtres ----------
 
 /**
@@ -890,7 +927,9 @@ function fenetre({ titre, corps, boutons = [], classe = '', large = false }) {
       </div>`;
     const panneau = fond.firstElementChild;
     if (!reduit()) panneau.animate([{ transform: 'scale(.7)', opacity: 0 }, { transform: 'scale(1.03)', opacity: 1, offset: 0.7 }, { transform: 'none', opacity: 1 }], { duration: 300, easing: 'ease-out' });
-    const fermer = (r) => {
+    ouvrirCouche();
+    const fermer = (r, { dejaRetire = false, ensuite = null } = {}) => {
+      if (dejaRetire) ensuite?.(); else fermerCouche(ensuite);
       fond.removeEventListener('click', clic);
       ui.fermerFenetre = null;
       ui.fenetre = false;
@@ -1132,9 +1171,8 @@ function fenetreJouer() {
   const surClic = (e) => {
     const b = e.target.closest('[data-aller]');
     if (!b) return;
-    ui.fermerFenetre('');
-    quitterPleinEcran();
-    location.hash = `#/${b.dataset.aller}`;
+    const vers = b.dataset.aller;
+    ui.fermerFenetre('', { ensuite: () => { quitterPleinEcran(); location.hash = `#/${vers}`; } });
   };
   fond.addEventListener('click', surClic);
   fenetre({ titre: 'Jouer pour gagner des étoiles', corps: `<p class="intro-jouer">Chaque partie rapporte des étoiles : revenez ensuite les dépenser sur l’île.</p><div class="jeux">${cartes}</div>`, large: true })
@@ -1266,7 +1304,18 @@ function brancher() {
   sur('ile-terminer', finirAgrandir);
   sur('ile-prec', () => changerIle(-1));
   sur('ile-suiv', () => changerIle(1));
-  sur('ile-etoiles', () => montrerGuide('Les étoiles se gagnent en jouant : Sudoku, Solitaire, Dames, Backgammon, Bulles et l’Aventure. Touchez « Jouer » !', { genre: 'bouton', id: 'jouer' }));
+  // toucher un compteur explique d'où vient la ressource
+  const ORIGINES = {
+    etoiles: ['Les étoiles se gagnent en jouant : Sudoku, Solitaire, Dames, Backgammon, Bulles et l’Aventure. Touchez « Jouer » !', { genre: 'bouton', id: 'jouer' }],
+    bois: ['Le bois vient des cabanes de bûcheron (près d’une forêt), des forêts qu’on abat et des buissons.', null],
+    pierre: ['La pierre vient de la carrière (à côté des rochers), des rochers qu’on casse et des cailloux.', null],
+    ble: ['Le blé vient des champs et des fermes. Touchez leur bulle pour le ramasser.', null],
+    habitants: ['Les habitants vivent dans les maisons, les cabanes, les fermes et les villages. Ils travaillent tout seuls.', null],
+  };
+  $('#ile-res', scene).addEventListener('click', (e) => {
+    const c = e.target.closest('.capsule');
+    if (c) { const [texte, cible] = ORIGINES[c.dataset.res]; montrerGuide(texte, cible, 7000); }
+  });
   $('#ile-guide', scene).addEventListener('click', fermerGuide);
   $('#ile-actions', scene).addEventListener('click', (e) => {
     const b = e.target.closest('[data-action]');
@@ -1285,6 +1334,7 @@ function brancher() {
   screen.orientation?.addEventListener?.('change', surRedimension);
   surVisibilite = () => { if (!document.hidden) { dernier = performance.now(); tic(); } };
   document.addEventListener('visibilitychange', surVisibilite);
+  window.addEventListener('popstate', surRetour);
 }
 
 function changerIle(sens) {
@@ -1402,6 +1452,10 @@ export default {
     screen.orientation?.removeEventListener?.('change', surRedimension);
     document.removeEventListener('keydown', surTouche);
     document.removeEventListener('visibilitychange', surVisibilite);
+    window.removeEventListener('popstate', surRetour);
+    couches = 0;
+    popIgnores = 0;
+    apresRetour = [];
     document.documentElement.classList.remove('ile-ouverte');
     quitterPleinEcran();
     if (E) sauver();

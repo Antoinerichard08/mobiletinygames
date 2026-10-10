@@ -27,10 +27,12 @@ export function imageCase(ile, x, y, t) {
     if (c.chantier) img.echafaudage = true;
     return img;
   }
-  if (w) return { f: 's', c: { abattre: S.souche, casser: S.gravats, planter: S.pousse, creuser: S.chantier[0], combler: S.chantier[0] }[w.action] };
+  if (w) return { f: 's', c: { abattre: S.souche, casser: S.gravats, planter: S.pousse, creuser: S.chantier[0], combler: S.chantier[0], debroussailler: S.souche, cailloux: S.chantier[0] }[w.action] };
   if (terrain === 'foret') return { f: 't', c: T.foret };
   if (terrain === 'montagne') return { f: 't', c: T.montagne };
   if (terrain === 'etang') return { f: 's', c: S.etang };
+  if (terrain === 'buisson') return { f: 's', c: S.broussailles };
+  if (terrain === 'caillou') return { f: 's', c: S.gravats };
   if (terrain === 'herbe') return { f: 't', c: T.herbe };
   const { x0, y0, x1, y1 } = ile.ext;
   if (y < y0) return { f: 't', c: x < x0 ? T.coinNO : x > x1 ? T.coinNE : T.bordN };
@@ -99,6 +101,7 @@ export function creerRendu(toile) {
   }
   /** Une case du monde (wx, wy = coin haut gauche), avec un éventuel agrandissement autour de son centre. */
   function caseMonde(img, wx, wy, echelle = 1, alpha = 1, decalY = 0) {
+    if (X(wx + 2) < 0 || Y(wy + 2) < 0 || X(wx - 1) > toile.width || Y(wy - 1) > toile.height) return; // hors de l'écran
     if (echelle === 1 && !decalY) return image(img, X(wx), Y(wy), X(wx + 1), Y(wy + 1), alpha);
     const cx = (X(wx) + X(wx + 1)) / 2, cy = (Y(wy) + Y(wy + 1)) / 2 + decalY * Z();
     const d = (Z() * echelle) / 2;

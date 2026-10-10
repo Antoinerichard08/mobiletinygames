@@ -35,7 +35,7 @@ const marchable = (ile, x, y) => {
   if (!estTerre(ile, x, y) || ile.travaux[cle(x, y)]) return false;
   const c = ile.cases[cle(x, y)];
   if (c && !PASSAGE.has(c.type)) return false;
-  return ['herbe', 'foret'].includes(terrainDe(ile, x, y));
+  return ['herbe', 'foret', 'buisson', 'caillou'].includes(terrainDe(ile, x, y));
 };
 
 /** Chemin de case en case (largeur d'abord) ; la dernière case peut être un bâtiment. Sinon : en ligne brisée. */

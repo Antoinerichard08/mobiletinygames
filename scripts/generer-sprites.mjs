@@ -104,6 +104,16 @@ motif(6, 5, 2, 2, [
   '...ggg......',
 ], BOUTEILLE);
 
+// broussailles qui repoussent sur l'herbe (rangée 5, colonne 7) : trois petits buissons, à l'échelle des pins de Tiny Islands
+herbe(7, 5);
+for (const [cx, cy, r] of [[5, 10, 2.6], [10.5, 8.5, 2.9], [8, 12.2, 2.2]]) {
+  ellipse(7, 5, cx, cy + 0.8, r + 0.6, r * 0.55, '#1c4a12'); // ombre
+  ellipse(7, 5, cx, cy, r + 0.5, r + 0.3, '#16380d'); // contour
+  ellipse(7, 5, cx, cy, r, r - 0.2, '#2f7a22');
+  ellipse(7, 5, cx - r * 0.25, cy - r * 0.3, r * 0.55, r * 0.45, '#56a83a');
+}
+point(7, 5, 9, 7, '#e85d5d'); point(7, 5, 4, 9, '#f2c94c'); // deux baies
+
 // ---------- Terrains et chantiers sur l'herbe (rangée 6) ----------
 const BOIS = { t: '#714114', T: '#a65d25', c: '#c8772c', s: '#593411' };
 function terreBattue(c, r) {

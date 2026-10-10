@@ -120,14 +120,24 @@ export function conseil(e, etoiles, t, n = 0) {
     return { texte: `Vos bâtisseurs travaillent (encore ${duree(prochain.fin - t)}). C’est le moment de jouer une partie !`, cible: { genre: 'bouton', id: 'jouer' } };
   }
 
-  // 8. du bois manque : une forêt à abattre
-  if ((e.ressources.bois || 0) < 6) {
+  // 8. il manque du bois ou de la pierre : ce qui se ramasse vite sur l'île
+  const chercher = (terrain) => {
     const { x0, y0, x1, y1 } = ile.ext;
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-      if (terrainDe(ile, x, y) === 'foret' && !ile.cases[cle(x, y)] && !ile.travaux[cle(x, y)] && Object.keys(ile.travaux).length === 0) {
-        return { texte: 'Il faut du bois : touchez une forêt puis « Abattre ». Une cabane de bûcheron en donne aussi.', cible: { genre: 'case', n, cle: cle(x, y) } };
-      }
+      if (terrainDe(ile, x, y) === terrain && !ile.cases[cle(x, y)] && !ile.travaux[cle(x, y)]) return cle(x, y);
     }
+    return null;
+  };
+  const occupe = Object.keys(ile.travaux).length > 0;
+  if (!occupe && (e.ressources.bois || 0) < 6) {
+    const buisson = chercher('buisson');
+    if (buisson) return { texte: 'Un buisson a poussé : touchez-le puis « Débroussailler », c’est du bois en plus.', cible: { genre: 'case', n, cle: buisson } };
+    const foret = chercher('foret');
+    if (foret) return { texte: 'Il faut du bois : touchez une forêt puis « Abattre ». Une cabane de bûcheron en donne aussi.', cible: { genre: 'case', n, cle: foret } };
+  }
+  if (!occupe && (e.ressources.pierre || 0) < 4) {
+    const caillou = chercher('caillou');
+    if (caillou) return { texte: 'Des cailloux traînent : touchez-les puis « Ramasser », c’est de la pierre en plus.', cible: { genre: 'case', n, cle: caillou } };
   }
 
   // 9. sinon : jouer pour gagner des étoiles
