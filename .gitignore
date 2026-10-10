@@ -1,0 +1,9 @@
+node_modules/
+/_site/
+/www/
+/android/
+# Clé de signature de l APK : NE JAMAIS la publier
+/cle-android/
+*.jks
+*.keystore
+.claude/

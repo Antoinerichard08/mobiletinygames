@@ -1,0 +1,39 @@
+/* Sudoku */
+.sdk {
+  container-type: inline-size; width: 100%; aspect-ratio: 1;
+  display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); grid-template-rows: repeat(9, minmax(0, 1fr));
+  border: 3px solid var(--ink); border-radius: 8px; overflow: hidden; background: var(--surface);
+}
+.cell {
+  position: relative; border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  padding: 0; margin: 0; background: var(--surface); color: var(--ink); border-radius: 0;
+  font-size: clamp(20px, 6.4cqw, 36px); line-height: 1; display: grid; place-items: center; cursor: pointer;
+}
+.cell:nth-child(9n+3), .cell:nth-child(9n+6) { border-right: 3px solid var(--ink); }
+.cell:nth-child(n+19):nth-child(-n+27), .cell:nth-child(n+46):nth-child(-n+54) { border-bottom: 3px solid var(--ink); }
+.cell:nth-child(9n) { border-right: 0; }
+.cell:nth-child(n+73) { border-bottom: 0; }
+.cell.peer { background: var(--sdk-hi); }
+.cell.same { background: var(--sdk-same); }
+.cell.sel { background: var(--sdk-sel); outline: 3px solid var(--focus); outline-offset: -3px; z-index: 1; }
+.cell.given { font-weight: 700; }
+.cell.user { color: var(--sdk-user); font-weight: 700; }
+.cell.bad { color: var(--sdk-bad); }
+.cell.wrong { background: var(--sdk-wrong); }
+.notes {
+  position: absolute; inset: 2px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+  place-items: center; font-size: clamp(9px, 2.6cqw, 14px); font-weight: 700; color: var(--muted);
+}
+.pad { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.pad button {
+  position: relative; min-height: 62px; border-radius: 14px; border: 2px solid var(--line);
+  background: var(--surface); font-size: 1.7rem; font-weight: 700; cursor: pointer;
+}
+.pad button:active { background: var(--soft); }
+.pad button small { position: absolute; right: 7px; bottom: 3px; font-size: .75rem; color: var(--muted); font-weight: 400; }
+.pad button.done { opacity: .35; }
+.pad button.erase { font-size: 1.4rem; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .cell, .pad button { transition: background-color .12s; }
+}

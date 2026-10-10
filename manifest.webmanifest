@@ -1,0 +1,20 @@
+{
+  "id": "./",
+  "name": "Salon de Jeux",
+  "short_name": "Salon de Jeux",
+  "description": "Sudoku, Solitaire et Dames, sans publicité, sans compte, même sans internet.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#1D5C48",
+  "background_color": "#1D5C48",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    { "src": "assets/icons/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icone-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

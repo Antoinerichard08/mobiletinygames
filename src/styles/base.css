@@ -1,0 +1,148 @@
+/* Salon de Jeux : styles communs à toute l'appli.
+   Toutes les couleurs sont des variables ; thème sombre automatique (prefers-color-scheme).
+   Chaque jeu ajoute ses propres styles dans src/games/<jeu>/<jeu>.css. */
+
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  src: url('../../assets/fonts/atkinson-hyperlegible-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  src: url('../../assets/fonts/atkinson-hyperlegible-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Young Serif';
+  src: url('../../assets/fonts/young-serif-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+  --bg: #EBF0ED; --surface: #FFFFFF; --surface-2: #F2F6F3; --ink: #15221D; --muted: #4D5D56; --line: #C5D1CA;
+  --brand: #1D5C48; --on-brand: #FFFFFF; --soft: #D6E8DE; --focus: #2457C5; --bad: #B3261E; --good: #1B7A4A;
+  --felt: #1E5A47; --felt-deep: #154233; --felt-line: rgba(255, 255, 255, .4); --on-felt: #F2FAF6;
+  --card-bg: #FFFFFF; --card-ink: #1B1F24; --card-red: #C0262D; --back-a: #2E4C8C; --back-b: #3A60AE;
+  --sq-light: #E8E2D0; --sq-dark: #2F5D4B;
+  --pc-w-hi: #FFFFFF; --pc-w: #F4EEDD; --pc-w-edge: #B7AB8C; --pc-r-hi: #E9776A; --pc-r: #C23A2E; --pc-r-edge: #7A1E17; --gold: #F2B705;
+  --sdk-hi: #E3EEE8; --sdk-same: #CCE0F5; --sdk-sel: #B9DFC9; --sdk-user: #1F56C4; --sdk-bad: #B3261E; --sdk-wrong: #F9D4D0;
+  --scrim: rgba(0, 0, 0, .55);
+  --font-display: 'Young Serif', Georgia, 'Times New Roman', serif;
+  --font-body: 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0F1613; --surface: #18221E; --surface-2: #202C27; --ink: #E8F0EC; --muted: #9DB1A8; --line: #30433A;
+    --brand: #6FC8A4; --on-brand: #06231A; --soft: #25423A; --focus: #8DB6FF; --bad: #FF8F85; --good: #7FDCA8;
+    --felt: #17493A; --felt-deep: #0E3126; --sq-light: #D6D0BC; --sq-dark: #25493C;
+    --sdk-hi: #1F2D27; --sdk-same: #27415E; --sdk-sel: #2C5444; --sdk-user: #8DB6FF; --sdk-bad: #FF8F85; --sdk-wrong: #4A2623;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0F1613; --surface: #18221E; --surface-2: #202C27; --ink: #E8F0EC; --muted: #9DB1A8; --line: #30433A;
+  --brand: #6FC8A4; --on-brand: #06231A; --soft: #25423A; --focus: #8DB6FF; --bad: #FF8F85; --good: #7FDCA8;
+  --felt: #17493A; --felt-deep: #0E3126; --sq-light: #D6D0BC; --sq-dark: #25493C;
+  --sdk-hi: #1F2D27; --sdk-same: #27415E; --sdk-sel: #2C5444; --sdk-user: #8DB6FF; --sdk-bad: #FF8F85; --sdk-wrong: #4A2623;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 18px;
+  line-height: 1.4;
+  padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(36px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation; /* pas de zoom au double toucher */
+}
+h1, h2, h3 { font-family: var(--font-display); font-weight: 400; margin: 0; text-wrap: balance; line-height: 1.15; }
+h1 { font-size: 2.3rem; }
+h2 { font-size: 1.7rem; }
+h3 { font-size: 1.45rem; }
+p { margin: 0; }
+button { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+
+.screen { max-width: 560px; margin-inline: auto; display: flex; flex-direction: column; gap: 14px; }
+.screen.game { -webkit-user-select: none; user-select: none; }
+.game-body { display: flex; flex-direction: column; gap: 14px; }
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* ---------- Boutons ---------- */
+.btn {
+  min-height: 56px; min-width: 0; padding: 0 18px; border-radius: 14px;
+  border: 2px solid var(--line); background: var(--surface); color: var(--ink);
+  font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+}
+.btn:active { background: var(--soft); }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.tools { display: flex; gap: 8px; }
+.tools .btn { flex: 1; padding: 0 6px; font-size: 1rem; }
+.status { min-height: 1.5em; text-align: center; color: var(--muted); }
+.status strong { color: var(--ink); }
+.tip { color: var(--muted); font-size: .95rem; text-align: center; }
+
+/* Choix segmenté (niveaux, taille du plateau) */
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 2px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--surface); }
+.seg button { min-height: 56px; border: 0; background: transparent; font-weight: 700; cursor: pointer; padding: 0 6px; }
+.seg button + button { border-inline-start: 2px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--brand); color: var(--on-brand); }
+
+/* ---------- Accueil ---------- */
+#home { gap: 18px; }
+.lede { color: var(--muted); font-size: 1.15rem; }
+.tiles { display: grid; gap: 14px; }
+.tile {
+  display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 16px; align-items: center; text-align: left;
+  width: 100%; min-height: 108px; padding: 16px; border-radius: 20px;
+  background: var(--surface); border: 2px solid var(--line); cursor: pointer;
+}
+.tile:active { background: var(--soft); }
+.tile svg { width: 76px; height: 76px; }
+.t-name { font-family: var(--font-display); font-size: 1.55rem; display: block; line-height: 1.15; }
+.t-desc { color: var(--muted); font-size: 1rem; display: block; margin-top: 2px; }
+.tile.soon { border-style: dashed; background: transparent; cursor: default; opacity: .8; }
+.tile.soon:active { background: transparent; }
+.install { font-size: 1.15rem; min-height: 64px; }
+.foot { color: var(--muted); font-size: .95rem; }
+
+/* Icônes des tuiles (SVG en ligne) */
+.ic-bg { fill: var(--soft); stroke: var(--brand); stroke-width: 3; }
+.ic-line { stroke: var(--brand); stroke-width: 2; fill: none; }
+.ic-t { fill: var(--ink); font: 700 17px var(--font-body); text-anchor: middle; }
+.ic-card { fill: var(--card-bg); stroke: var(--line); stroke-width: 2; }
+.ic-back { fill: var(--back-a); stroke: var(--card-bg); stroke-width: 3; }
+.ic-red { fill: var(--card-red); font: 700 22px var(--font-body); text-anchor: middle; }
+.ic-lt { fill: var(--sq-light); }
+.ic-dk { fill: var(--sq-dark); }
+.ic-pw { fill: var(--pc-w); stroke: var(--pc-w-edge); stroke-width: 2; }
+.ic-pr { fill: var(--pc-r); stroke: var(--pc-r-edge); stroke-width: 2; }
+.ic-tri { fill: var(--muted); }
+
+/* ---------- Fenêtre de dialogue ---------- */
+.sheet { position: fixed; inset: 0; z-index: 50; background: var(--scrim); display: flex; align-items: flex-end; justify-content: center; padding: 16px; }
+.sheet-box {
+  width: 100%; max-width: 480px; background: var(--surface); color: var(--ink); border-radius: 22px; padding: 22px;
+  display: flex; flex-direction: column; gap: 14px; margin-bottom: env(safe-area-inset-bottom, 0px);
+}
+.sheet-actions { display: flex; flex-direction: column-reverse; gap: 10px; } /* bouton principal en haut, pleine largeur */
+.sheet-actions .btn { flex: 1; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn, .tile, .seg button { transition: background-color .12s; }
+}
