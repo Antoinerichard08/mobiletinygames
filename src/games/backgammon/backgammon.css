@@ -1,0 +1,101 @@
+/* Backgammon : plateau dessiné en SVG, zones tactiles par-dessus, puis les pions qui glissent. */
+:root {
+  --bg-feutre: #1E5A47; --bg-bord: #6B4A2B; --bg-bande: #4E3520;
+  --bg-pt-a: #E3D3AE; --bg-pt-b: #B4553A; --bg-texte: rgba(255, 255, 255, .55);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg-feutre: #17493A; --bg-bord: #4E3520; --bg-bande: #3A2817; --bg-pt-a: #CDBD98; --bg-pt-b: #9C4832; }
+}
+:root[data-theme="dark"] { --bg-feutre: #17493A; --bg-bord: #4E3520; --bg-bande: #3A2817; --bg-pt-a: #CDBD98; --bg-pt-b: #9C4832; }
+
+.bg-body { display: flex; flex-direction: column; gap: 12px; }
+.bg-zone-plateau { width: 100%; display: flex; justify-content: center; }
+.bg-side { display: flex; flex-direction: column; gap: 10px; }
+
+.bg-board {
+  position: relative; border-radius: 14px; border: 6px solid var(--bg-bord);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .25); box-sizing: content-box; touch-action: manipulation;
+}
+.bg-board svg { position: absolute; inset: 0; display: block; }
+.bg-feutre { fill: var(--bg-feutre); }
+.pt-a { fill: var(--bg-pt-a); }
+.pt-b { fill: var(--bg-pt-b); }
+.bg-bande { fill: var(--bg-bande); }
+.bg-bande.fine { opacity: .6; }
+.bg-sens { fill: var(--bg-texte); font: 700 13px var(--font-body); }
+
+.bg-zones, .bg-marques, .bg-pions { position: absolute; inset: 0; }
+.bg-marques, .bg-pions { pointer-events: none; }
+.bg-zone { position: absolute; border: 0; padding: 0; margin: 0; background: transparent; border-radius: 6px; cursor: pointer; }
+.bg-zone:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+
+.ck { position: absolute; left: 0; top: 0; width: var(--d); height: var(--d); display: grid; place-items: center; will-change: transform; }
+.ck > i {
+  width: 94%; height: 94%; border-radius: 50%; display: block; transition: scale .15s, box-shadow .15s, width .3s, height .3s, border-radius .3s;
+}
+.ck.w > i {
+  background: radial-gradient(circle at 35% 30%, var(--pc-w-hi), var(--pc-w) 50%, var(--pc-w-edge));
+  box-shadow: 0 2px 0 var(--pc-w-edge), 0 3px 5px rgba(0, 0, 0, .4), inset 0 0 0 3px rgba(183, 171, 140, .45);
+}
+.ck.r > i {
+  background: radial-gradient(circle at 35% 30%, var(--pc-r-hi), var(--pc-r) 52%, var(--pc-r-edge));
+  box-shadow: 0 2px 0 var(--pc-r-edge), 0 3px 5px rgba(0, 0, 0, .4), inset 0 0 0 3px rgba(122, 30, 23, .45);
+}
+.ck > b { position: absolute; font-size: calc(var(--d) * .42); font-weight: 700; color: #1B1F24; pointer-events: none; }
+.ck.r > b { color: #fff; }
+.ck.lifted > i { scale: 1.12; box-shadow: 0 0 0 4px var(--gold), 0 8px 12px rgba(0, 0, 0, .45); }
+/* pions sortis : de fines plaquettes rangées dans le plateau de sortie */
+.ck.off.verticale > i { width: 26%; height: 92%; border-radius: 4px; }
+.ck.off.horizontale > i { width: 92%; height: 26%; border-radius: 4px; }
+
+.bg-marque { position: absolute; left: 0; top: 0; width: var(--d); height: var(--d); border-radius: 50%; }
+.bg-marque.cible { box-shadow: inset 0 0 0 4px var(--gold); background: rgba(242, 183, 5, .25); }
+.bg-marque.cible.double { box-shadow: inset 0 0 0 4px var(--gold), inset 0 0 0 7px rgba(0, 0, 0, .35); }
+.bg-marque.conseil { box-shadow: 0 0 0 4px var(--gold); }
+
+.bg-score { display: flex; justify-content: space-between; gap: 8px; font-size: 1rem; color: var(--muted); align-items: baseline; }
+.bg-score b { color: var(--ink); font-size: 1.4rem; }
+.bg-info { color: var(--muted); font-size: .9rem; text-align: center; }
+.bg-label { font-weight: 700; margin-top: 4px; }
+.seg.vertical { grid-auto-flow: row; }
+.seg.vertical button + button { border-inline-start: 0; border-top: 2px solid var(--line); }
+.bg-regles { margin: 0; padding-left: 1.1em; display: grid; gap: 8px; }
+.bg-action { min-height: 64px; font-size: 1.15rem; }
+
+/* Dés */
+.bg-des { display: flex; justify-content: center; gap: 12px; min-height: 60px; align-items: center; }
+.de {
+  width: 56px; height: 56px; border-radius: 12px; background: #FFFDF6; border: 2px solid #CFC6AE;
+  display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); padding: 8px; gap: 2px;
+  box-shadow: 0 3px 0 #CFC6AE, 0 4px 8px rgba(0, 0, 0, .2);
+}
+.de i { border-radius: 50%; }
+.de i.on { background: #1B1F24; }
+.de.rouge { background: var(--pc-r); border-color: var(--pc-r-edge); box-shadow: 0 3px 0 var(--pc-r-edge), 0 4px 8px rgba(0, 0, 0, .2); }
+.de.rouge i.on { background: #FFF4E6; }
+.de.used { opacity: .3; transform: scale(.85); }
+.de.petit { width: 46px; height: 46px; padding: 6px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .bg-marque.cible { animation: bg-pulse 1.2s ease-in-out infinite; }
+  .bg-marque.conseil { animation: bg-pulse 1.1s ease-in-out infinite; }
+  .de { transition: opacity .25s, transform .25s; }
+  .status .dots i { animation: dm-points 1.2s infinite; font-style: normal; }
+  .status .dots i:nth-child(2) { animation-delay: .2s; }
+  .status .dots i:nth-child(3) { animation-delay: .4s; }
+  @keyframes bg-pulse { 50% { transform-origin: center; opacity: .55; } }
+  @keyframes dm-points { 0%, 60%, 100% { opacity: .2; } 30% { opacity: 1; } }
+}
+
+/* Téléphone à l'horizontale : plateau classique à gauche, commandes à droite */
+@media (orientation: landscape) and (max-height: 560px) {
+  .bg-body { display: grid; grid-template-columns: minmax(0, 1fr) var(--cote); gap: 12px; align-items: start; }
+  .bg-zone-plateau { justify-content: flex-start; }
+  .bg-side { padding-top: 64px; gap: 6px; }
+  .bg-side .tools { flex-wrap: wrap; }
+  .bg-side .tools .btn { flex: 1 1 45%; min-height: 48px; }
+  .bg-side .status { font-size: .9rem; min-height: 0; }
+  .bg-info { display: none; }
+  .de { width: 44px; height: 44px; padding: 6px; }
+  .bg-des { min-height: 48px; }
+}
