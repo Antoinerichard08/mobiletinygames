@@ -139,7 +139,7 @@ function orienter() {
   scene.classList.toggle('tourne', tourne);
   const ancien = { l: cam.l, h: cam.h };
   cam = { ...cam, l, h };
-  rendu.dimensionner(l, h, Math.min(2.5, window.devicePixelRatio || 1));
+  rendu.dimensionner(l, h, Math.min(2, window.devicePixelRatio || 1));
   if (ancien.l !== l || ancien.h !== h) cam = borner(cam, bornes());
 }
 const versScene = (cx, cy) => (tourne ? { x: cy, y: window.innerWidth - cx } : { x: cx, y: cy });
@@ -198,9 +198,14 @@ function etatDessin() {
   };
 }
 
+let derniereAction = 0;
+let image = 0;
 function boucle(t) {
   animation = requestAnimationFrame(boucle);
   if (!racine) return;
+  // au repos depuis un moment : une image sur deux suffit (la batterie dit merci)
+  image++;
+  if (t - derniereAction > 20000 && !ui.vol && !ui.inertie && image % 2) return;
   const dt = Math.min(0.05, Math.max(0, (t - dernier) / 1000));
   dernier = t;
   temps += dt;
@@ -1223,7 +1228,7 @@ function construireScene() {
         <div class="hud-hc">
           <div class="ruban">
             <button class="ruban-fleche" id="ile-prec" aria-label="Île précédente">${ICONE.gauche}</button>
-            <span id="ile-nom"></span>
+            <button class="ruban-nom" id="ile-nom" aria-label="Revenir au centre de l’île"></button>
             <button class="ruban-fleche" id="ile-suiv" aria-label="Île suivante">${ICONE.droite}</button>
           </div>
         </div>
@@ -1258,6 +1263,9 @@ function construireScene() {
 }
 
 function brancher() {
+  const reveiller = () => { derniereAction = performance.now(); };
+  scene.addEventListener('pointerdown', reveiller, true);
+  scene.addEventListener('wheel', reveiller, { capture: true, passive: true });
   suivreGestes(toile, versScene, {
     toucher: (p) => toucher(p),
     debutGlisse(p) {
@@ -1303,6 +1311,7 @@ function brancher() {
   sur('ile-annuler', () => { sortirModePose(); dire(''); });
   sur('ile-terminer', finirAgrandir);
   sur('ile-prec', () => changerIle(-1));
+  sur('ile-nom', () => { deselectionner(); volerVers(cameraPourIle(E.active), 700); }); // perdu ? on revient sur l'île
   sur('ile-suiv', () => changerIle(1));
   // toucher un compteur explique d'où vient la ressource
   const ORIGINES = {
@@ -1436,6 +1445,7 @@ export default {
     majHud();
     pleinEcran();
     dernier = performance.now();
+    derniereAction = dernier;
     animation = requestAnimationFrame(boucle);
     horloge = setInterval(tic, 1000);
     accueillir();

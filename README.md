@@ -50,6 +50,8 @@ Pour une nouvelle version : refaire les mêmes étapes, le bouton s'appellera **
   - Les **bâtisseurs** (en haut à gauche) mènent un chantier chacun. Les habitants récoltent tout seuls du
     **bois**, de la **pierre** et du **blé**, même appli fermée : une bulle apparaît, il suffit de la toucher.
   - De temps en temps, une **bouteille** s'échoue sur la plage : touchez-la, c'est un petit cadeau.
+  - Des **buissons** et des **cailloux** repoussent de temps en temps : touchez-les pour les enlever (un peu de bois
+    ou de pierre en plus). Perdue sur la mer ? Touchez le **nom de l'île** en haut : on revient au centre.
   - **Jouer** (en bas à gauche) ouvre les jeux ; après la partie, on revient directement sur l'île.
   - L'ampoule 💡 : Rose, la voisine, donne un **conseil** et montre où toucher.
   - Une île très belle en fait apparaître une nouvelle, cachée jusque-là dans les nuages !
