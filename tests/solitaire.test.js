@@ -156,3 +156,49 @@ test('parties automatiques en suivant les indices : jamais de coup interdit, car
   }
   t.diagnostic(`${gagnees} parties gagnées sur 40 en suivant seulement les indices`);
 });
+
+// ---------- Version 2 : tirage par 3, solveur, donnes gagnables ----------
+import { estGagnable } from '../src/games/solitaire/solveur.js';
+import { preparerDonne } from '../src/games/solitaire/donne.js';
+
+test('pioche par trois : trois cartes retournées d’un coup, la dernière jouable', () => {
+  const e = vide();
+  e.tirage = 3;
+  e.stock = [c(1, 0, false), c(2, 0, false), c(3, 0, false), c(4, 0, false)];
+  piocher(e);
+  assert.deepEqual(e.waste.map((x) => x.r), [4, 3, 2]);
+  assert.equal(e.stock.length, 1);
+  piocher(e);
+  assert.equal(e.waste.length, 4, 'il ne restait qu’une carte');
+  assert.equal(piocher(e), 'retour');
+  assert.equal(e.stock.length, 4);
+});
+
+test('solveur : une position déjà gagnée est reconnue', () => {
+  const e = vide();
+  for (let s = 0; s < 4; s++) for (let r = 1; r <= 12; r++) e.found[s].push(c(r, s));
+  for (let s = 0; s < 4; s++) e.tab[s] = [c(13, s)];
+  assert.equal(estGagnable(e), true);
+});
+
+test('solveur : une position bloquée est reconnue perdue', () => {
+  const e = vide();
+  e.tab[0] = [c(1, 0, false), c(2, 0)]; // l’As est sous le 2 de pique, qui ne peut aller nulle part
+  assert.equal(estGagnable(e), false);
+});
+
+test('donnes gagnables : le solveur confirme chaque donne Facile et Moyen', () => {
+  for (const niveau of ['facile', 'moyen']) {
+    for (let g = 1; g <= 4; g++) {
+      const e = preparerDonne(niveau, { alea: aleaGraine(1000 + g) });
+      assert.equal(e.tirage, niveau === 'facile' ? 1 : 3);
+      assert.equal(estGagnable(e, { tirage: e.tirage, limite: 1500 }), true, `${niveau} ${g}`);
+    }
+  }
+});
+
+test('niveau Difficile : donne au hasard, trois cartes à la fois', () => {
+  const e = preparerDonne('difficile', { alea: aleaGraine(5) });
+  assert.equal(e.tirage, 3);
+  assert.equal(e.stock.length, 24);
+});

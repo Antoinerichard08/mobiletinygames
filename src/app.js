@@ -22,6 +22,7 @@ function idDepuisAdresse() {
 
 function route() {
   fermerDialogue(false);
+  document.querySelectorAll('.sheet.result-sheet, .sheet.temp').forEach((s) => s.remove()); // fenêtres de fin de partie, de choix…
   if (jeuActif) {
     jeuActif.demonter();
     jeuActif = null;
@@ -91,20 +92,26 @@ function afficherAccueil() {
 
 // ---------- Écran d'un jeu ----------
 
-function afficherJeu(jeu) {
+/**
+ * @param {object} jeu     module du jeu (registre)
+ * @param {object} options { defi } quand le jeu est lancé depuis la carte des niveaux
+ */
+function afficherJeu(jeu, options = {}) {
   document.title = `${jeu.nom} · Salon de Jeux`;
   app.innerHTML = `
-    <section class="screen game" id="${jeu.id}">
+    <section class="screen game" id="${jeu.id}" ${jeu.paysage ? 'data-paysage' : ''}>
       <header class="bar">
-        <button class="btn" id="back">← Accueil</button>
+        <button class="btn" id="back">${options.defi ? '← Carte' : '← Accueil'}</button>
         <h2></h2>
       </header>
+      ${options.defi ? '<p class="defi-banner"></p>' : ''}
       <div class="game-body"></div>
     </section>`;
   $('h2', app).textContent = jeu.nom;
+  if (options.defi) $('.defi-banner', app).textContent = `Niveau ${options.defi.numero} : ${options.defi.objectif}`;
   $('#back', app).addEventListener('click', allerAccueil);
   jeuActif = jeu;
-  jeu.monter($('.game-body', app));
+  jeu.monter($('.game-body', app), options);
 }
 
 // ---------- Installation sur le téléphone (PWA) ----------

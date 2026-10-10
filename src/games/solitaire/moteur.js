@@ -2,7 +2,7 @@
 // Aucune dépendance au navigateur : testable avec Node (tests/solitaire.test.js).
 //
 // Une carte : { s: couleur 0..3 (♠ ♥ ♦ ♣), r: rang 1..13 (As..Roi), up: visible ? }
-// L'état : { stock, waste, found: [4 piles], tab: [7 colonnes], moves }
+// L'état : { stock, waste, found: [4 piles], tab: [7 colonnes], moves, tirage: 1 ou 3 cartes à la fois }
 // Une origine : { loc: 'waste' | 'found' | 'tab', i: numéro de pile, k: position dans la colonne }
 
 import { melanger } from '../../core/outils.js';
@@ -17,7 +17,7 @@ export const nomCarte = (carte) => `${NOMS_RANGS[carte.r]} de ${NOMS_COULEURS[ca
 /** « l’As de cœur », « la Dame de pique », « le 7 de trèfle » */
 export const nomCarteAvecArticle = (carte) => (carte.r === 1 ? 'l’' : carte.r === 12 ? 'la ' : 'le ') + nomCarte(carte);
 
-export function nouvellePartie(alea = Math.random) {
+export function nouvellePartie(alea = Math.random, { tirage = 1 } = {}) {
   const paquet = [];
   for (let s = 0; s < 4; s++) for (let r = 1; r <= 13; r++) paquet.push({ s, r, up: false });
   melanger(paquet, alea);
@@ -27,8 +27,18 @@ export function nouvellePartie(alea = Math.random) {
     col[col.length - 1].up = true;
     tab.push(col);
   }
-  return { stock: paquet, waste: [], found: [[], [], [], []], tab, moves: 0 };
+  return { stock: paquet, waste: [], found: [[], [], [], []], tab, moves: 0, tirage };
 }
+
+/**
+ * Niveaux du Solitaire : Facile = 1 carte et donne gagnable ; Moyen = 3 cartes et donne gagnable ;
+ * Difficile = 3 cartes, donne au hasard.
+ */
+export const NIVEAUX = {
+  facile: { tirage: 1, gagnable: true },
+  moyen: { tirage: 3, gagnable: true },
+  difficile: { tirage: 3, gagnable: false },
+};
 
 export const cloner = (etat) => JSON.parse(JSON.stringify(etat));
 
@@ -104,9 +114,12 @@ export function deplacer(etat, o, dest) {
 /** Retourne une carte de la pioche, ou remet la défausse dans la pioche si elle est vide. */
 export function piocher(etat) {
   if (etat.stock.length) {
-    const c = etat.stock.pop();
-    c.up = true;
-    etat.waste.push(c);
+    const n = Math.min(etat.tirage || 1, etat.stock.length);
+    for (let i = 0; i < n; i++) {
+      const c = etat.stock.pop();
+      c.up = true;
+      etat.waste.push(c);
+    }
     etat.moves++;
     return 'carte';
   }
@@ -191,3 +204,7 @@ export function indice(etat) {
   if (etat.stock.length || etat.waste.length) return { pioche: true };
   return null;
 }
+
+/** Toutes les cartes sont visibles et la pioche est vide : on peut tout ranger automatiquement. */
+export const peutFinirSeul = (etat) =>
+  !etat.stock.length && !etat.waste.length && etat.tab.every((col) => col.every((c) => c.up));

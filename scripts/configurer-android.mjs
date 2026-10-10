@@ -1,5 +1,5 @@
 // Personnalise le projet Android généré par Capacitor (dossier android/, non versionné) :
-// numéro de version, icônes, écran de démarrage, orientation portrait.
+// numéro de version, icônes, écran de démarrage.
 // Utilisé par le workflow .github/workflows/apk.yml, après « npx cap add android ».
 import { cpSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -37,7 +37,5 @@ for (const dossier of readdirSync(res)) {
 cpSync(join(RACINE, 'assets/android/res'), res, { recursive: true });
 console.log('icônes et écran de démarrage copiés');
 
-// 3. Appli en mode portrait, comme la PWA
-modifier('app/src/main/AndroidManifest.xml', (t) =>
-  t.replace('android:name=".MainActivity"', 'android:name=".MainActivity"\n            android:screenOrientation="portrait"'),
-);
+// 3. Orientation : libre, comme la PWA (le Solitaire se joue aussi à l'horizontale).
+//    Le modèle Capacitor ne force rien : il n'y a rien à changer.

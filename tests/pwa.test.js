@@ -12,7 +12,7 @@ test('le manifeste est complet', () => {
   for (const champ of ['name', 'short_name', 'start_url', 'theme_color', 'background_color']) assert.ok(m[champ], champ);
   assert.equal(m.lang, 'fr');
   assert.equal(m.display, 'standalone');
-  assert.equal(m.orientation, 'portrait');
+  assert.equal(m.orientation, 'any', 'le Solitaire se joue aussi à l’horizontale');
   const icone = (taille, but) => m.icons.find((i) => i.sizes === taille && i.purpose === but);
   assert.ok(icone('192x192', 'any'));
   assert.ok(icone('512x512', 'any'));
@@ -46,7 +46,7 @@ test('chaque jeu du registre a un module complet', async () => {
     const texte = lireTexte(join('src', c));
     for (const cle of ['id:', 'nom:', 'description:', 'icone:']) assert.ok(texte.includes(cle), `${c} : ${cle} manquant`);
     if (!texte.includes('bientot: true')) {
-      assert.match(texte, /monter\(conteneur\)/, `${c} : monter() manquant`);
+      assert.match(texte, /monter\(conteneur/, `${c} : monter() manquant`);
       assert.match(texte, /demonter\(\)/, `${c} : demonter() manquant`);
     }
   }
