@@ -10,7 +10,7 @@ Sudoku, Solitaire et Dames (le Backgammon arrive plus tard).
 ### Installer l'application (la méthode conseillée)
 
 1. Sur le téléphone, ouvrez **Chrome** et allez à cette adresse :
-   **https://antoinerichard08.github.io/salon-de-jeux/**
+   **https://antoinerichard08.github.io/mobiletinygames/**
 2. Touchez le gros bouton vert **« Installer sur le téléphone »**, en bas de la liste des jeux.
    *(S'il n'apparaît pas : touchez les **trois petits points ⋮** en haut à droite de Chrome, puis **« Installer l'application »**. Selon le téléphone, ce choix s'appelle **« Ajouter à l'écran d'accueil »**.)*
 3. Touchez **« Installer »** pour confirmer.
@@ -116,7 +116,7 @@ l'applique dès qu'on revient sur l'écran d'accueil.
 
 ### Configuration GitHub (une seule fois)
 
-- Dépôt **public** `salon-de-jeux` (GitHub Pages gratuit).
+- Dépôt **public** `mobiletinygames` (GitHub Pages gratuit).
 - **Settings → Pages → Build and deployment → Source : GitHub Actions**.
 
 ### Icônes
