@@ -8,7 +8,7 @@ import { JEUX } from './registre.js';
 import { VERSION } from './version.js';
 import { $ } from './core/outils.js';
 import { victoires } from './core/stockage.js';
-import { fermerDialogue } from './core/dialogue.js';
+import { fermerDialogue, demander } from './core/dialogue.js';
 import { solde } from './core/etoiles.js';
 import { ecouter } from './core/evenements.js';
 import { definirNavigation } from './core/navigation.js';
@@ -133,6 +133,11 @@ function afficherAccueil() {
         </div>
         <span class="star-chip" aria-label="Vos étoiles">★ <b>${solde()}</b></span>
       </div>
+      <div class="install-zone">
+        <button class="btn primary install" id="install" hidden>Installer sur le téléphone</button>
+        <button class="btn install-aide" id="install-aide" hidden>Comment installer l’appli sur le téléphone ?</button>
+        <p class="status" id="install-msg" aria-live="polite" hidden></p>
+      </div>
       <div class="tiles grandes">
         <button class="tile mode" data-aller="niveaux">${ICONE_AVENTURE}<span><span class="t-name">Aventure</span>
           <span class="t-desc">${ouvert ? `Niveau ${courant} vous attend · ${e.jetons} nouveau${e.jetons > 1 ? 'x' : ''} aujourd’hui` : `Niveau ${courant} : ouvert demain. Rejouez pour plus d’étoiles !`}</span></span></button>
@@ -145,8 +150,6 @@ function afficherAccueil() {
       </div>
       <p class="titre-section">Jeux libres</p>
       <div class="tiles"></div>
-      <button class="btn primary install" id="install" hidden>Installer sur le téléphone</button>
-      <p class="status" id="install-msg" aria-live="polite"></p>
       <p class="foot">Aucune publicité, aucun compte. Vos parties restent sur ce téléphone.<br>Graphismes de l’île : « Tiny Islands » par Majadroid.<br>Version ${VERSION}</p>
     </section>`;
   const tuiles = $('.tiles:not(.grandes)', app);
@@ -162,9 +165,9 @@ function afficherAccueil() {
   app.querySelectorAll('[data-aller]').forEach((b) => b.addEventListener('click', () => { location.hash = '#/' + b.dataset.aller; }));
   // les blocs arrivent l'un après l'autre
   [...app.querySelectorAll('.tile, .missions-accueil')].forEach((el, n) => apparaitre(el, { delai: 40 + n * 60 }));
-  const bouton = $('#install', app);
-  bouton.hidden = !installation;
-  bouton.addEventListener('click', installer);
+  $('#install', app).addEventListener('click', installer);
+  $('#install-aide', app).addEventListener('click', aideInstallation);
+  majZoneInstallation();
 }
 
 // ---------- Écrans : jeu, carte, île ----------
@@ -207,32 +210,59 @@ function afficherEcran(module, titre) {
 
 // ---------- Installation sur le téléphone (PWA) ----------
 
+// Déjà ouvert comme une appli (icône de l'écran d'accueil, ou APK) : rien à proposer.
+const dejaEnAppli = () => dansApk || matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+let installee = false;
+
+/**
+ * En haut de l'accueil : le gros bouton « Installer » quand Chrome le permet ; sinon, quand on est dans
+ * le navigateur, une aide qui explique où trouver « Installer l'application » dans le menu de Chrome.
+ */
+function majZoneInstallation() {
+  const bouton = document.getElementById('install');
+  const aide = document.getElementById('install-aide');
+  const msg = document.getElementById('install-msg');
+  if (!bouton) return;
+  bouton.hidden = !installation || dejaEnAppli();
+  aide.hidden = Boolean(installation) || dejaEnAppli() || installee;
+  msg.hidden = !installee;
+  if (installee) msg.textContent = 'C’est installé ! L’icône « Salon de Jeux » est sur l’écran du téléphone.';
+}
+
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   installation = e;
-  const bouton = document.getElementById('install');
-  if (bouton) bouton.hidden = false;
+  majZoneInstallation();
 });
 
 window.addEventListener('appinstalled', () => {
   installation = null;
-  const bouton = document.getElementById('install');
-  if (bouton) bouton.hidden = true;
-  const msg = document.getElementById('install-msg');
-  if (msg) msg.textContent = 'C’est installé ! L’icône « Salon de Jeux » est sur l’écran du téléphone.';
+  installee = true;
+  majZoneInstallation();
 });
 
 async function installer() {
-  if (!installation) return;
+  if (!installation) return aideInstallation();
   const evt = installation;
   installation = null;
-  document.getElementById('install').hidden = true;
+  majZoneInstallation();
   // Si la personne refuse, Chrome renverra beforeinstallprompt plus tard et le bouton reviendra.
   try {
     await evt.prompt();
   } catch {
     /* rien */
   }
+}
+
+function aideInstallation() {
+  return demander({
+    titre: 'Installer l’appli',
+    texte: '1. Touchez les trois petits points ⋮, en haut à droite de Chrome.\n'
+      + '2. Touchez « Installer l’application » (ou « Ajouter à l’écran d’accueil », puis « Installer »).\n'
+      + '3. L’icône « Salon de Jeux » apparaît sur l’écran du téléphone.\n\n'
+      + 'Si le menu propose « Ouvrir dans l’application », c’est qu’elle est déjà installée : cherchez l’icône sur l’écran du téléphone.',
+    oui: 'J’ai compris',
+  });
 }
 
 // ---------- Service worker : hors ligne + mises à jour ----------
