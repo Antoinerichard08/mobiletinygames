@@ -2,7 +2,7 @@
   "id": "./",
   "name": "Salon de Jeux",
   "short_name": "Salon de Jeux",
-  "description": "Sudoku, Solitaire et Dames, sans publicité, sans compte, même sans internet.",
+  "description": "Sudoku, Solitaire, Dames et Backgammon, sans publicité, sans compte, même sans internet.",
   "lang": "fr",
   "dir": "ltr",
   "start_url": "./",
