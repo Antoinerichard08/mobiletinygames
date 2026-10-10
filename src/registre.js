@@ -9,6 +9,7 @@
 
 import sudoku from './games/sudoku/index.js';
 import solitaire from './games/solitaire/index.js';
+import dames from './games/dames/index.js';
 import backgammon from './games/backgammon/index.js';
 
-export const JEUX = [sudoku, solitaire, backgammon];
+export const JEUX = [sudoku, solitaire, dames, backgammon];
