@@ -1,7 +1,7 @@
 # Mom's games
 
 Des jeux classiques **sans aucune publicité**, sans compte et sans internet une fois installés :
-Sudoku, Solitaire, Dames et Backgammon. Plus une **Aventure** (une carte de niveaux, quelques nouveaux
+Sudoku, Solitaire, Dames, Backgammon et **Bulles**. Plus une **Aventure** (une carte de niveaux, quelques nouveaux
 chaque jour) et **Mon île**, où l'on construit avec les étoiles gagnées en jouant.
 
 ---
@@ -45,7 +45,10 @@ Pour une nouvelle version : refaire les mêmes étapes, le bouton s'appellera **
   **bois**, de la **pierre** et du **blé**, même quand l'appli est fermée : touchez les petites bulles, ou
   « Tout ramasser ». On peut aussi abattre la forêt, casser les rochers, planter des arbres, creuser un étang,
   décorer et **agrandir l'île**. Une île très belle en fait apparaître une nouvelle !
-- Le **Solitaire**, les **Dames**, le **Sudoku** et le **Backgammon** se jouent aussi téléphone tourné à l'horizontale.
+- **Bulles** : posez le doigt là où vous voulez envoyer la bulle (une ligne montre le chemin), levez-le pour tirer.
+  Trois bulles de la même couleur éclatent, et tout ce qui ne tient plus tombe. Chaque couleur a son symbole
+  (cœur, losange, triangle, étoile, rond, carré). S'il manque des bulles, 5 de plus sont offertes une fois par niveau.
+- Le **Solitaire**, les **Dames**, le **Sudoku**, le **Backgammon** et les **Bulles** se jouent aussi téléphone tourné à l'horizontale.
 
 ---
 
@@ -132,6 +135,10 @@ une appli légère, rapide sur un vieux téléphone et sous licence MIT, leurs t
   primes, ancres) ; le niveau Difficile regarde la meilleure réponse adverse sur les 21 lancers possibles.
 - **Solitaire** : un solveur (recherche « meilleur d'abord » avec table de transposition, coups sûrs joués d'office,
   comme Solvitaire) ne distribue que des donnes gagnables en Facile et Moyen.
+- **Bulles** : grille hexagonale à rangées décalées, rebonds, accrochage à la case la plus proche, éclatement par
+  remplissage (3 bulles ou plus), chute de tout ce qui n'est plus relié au plafond. Niveaux **générés** (formes, grappes
+  de couleurs, pierres, glace, bombes, poussins à libérer) puis **joués par un joueur automatique** : un niveau n'est
+  gardé que s'il est gagnable, et le nombre de bulles données comme les étoiles se calent sur ses parties.
 - **Aventure** : le modèle de la « carte saga » popularisé par Candy Crush, avec un rythme quotidien.
 - **Mon île** : inspiré d'*Islanders* (points selon les voisins), sans malus, sans minuteur, sans échec.
 - **Graphismes de l'île et de la carte** : pack « Tiny Islands » de Majadroid (CC0), dans `assets/ile`. Les habitants,

@@ -87,7 +87,7 @@ test('missions : progression, récompense et coffre quand les trois sont faites'
   let recompenses = [];
   // on joue jusqu'à tout accomplir (victoires variées en niveau difficile, en défi, sans indice)
   for (let i = 0; i < 12; i++) {
-    for (const jeu of ['sudoku', 'solitaire', 'dames', 'backgammon']) {
+    for (const jeu of ['sudoku', 'solitaire', 'dames', 'backgammon', 'bulles']) {
       recompenses = recompenses.concat(signaler({ jeu, gagne: true, difficulte: 'difficile', defi: { numero: 1 }, details: { indices: 0 }, etoiles: 3 }, jour));
     }
   }

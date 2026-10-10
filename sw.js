@@ -2,7 +2,7 @@
 // À chaque nouvelle version, « npm run nouvelle-version -- X.Y.Z » change VERSION (et la liste des fichiers) :
 // le navigateur voit que ce fichier a changé, télécharge la nouvelle version et efface l'ancienne.
 
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const CACHE = `salon-de-jeux-${VERSION}`;
 
 // FICHIERS-DEBUT (liste générée par scripts/nouvelle-version.mjs, vérifiée par les tests)
@@ -38,6 +38,12 @@ const FICHIERS = [
   'src/games/backgammon/index.js',
   'src/games/backgammon/moteur.js',
   'src/games/backgammon/plateau.js',
+  'src/games/bulles/bulles.css',
+  'src/games/bulles/generateur-worker.js',
+  'src/games/bulles/generateur.js',
+  'src/games/bulles/index.js',
+  'src/games/bulles/moteur.js',
+  'src/games/bulles/rendu.js',
   'src/games/dames/dames.css',
   'src/games/dames/ia-worker.js',
   'src/games/dames/ia.js',

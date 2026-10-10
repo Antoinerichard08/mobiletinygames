@@ -21,8 +21,11 @@ export const CHAPITRES = [
   { nom: 'Le Château', teinte: 'chateau' },
 ];
 
+// Le premier chapitre garde les 4 jeux d'origine (les niveaux déjà joués ne changent pas) ;
+// les bulles rejoignent le cycle à partir du chapitre 2.
 const ORDRE_JEUX = ['sudoku', 'solitaire', 'dames', 'backgammon'];
-const NOMS_JEUX = { sudoku: 'Sudoku', solitaire: 'Solitaire', dames: 'Dames', backgammon: 'Backgammon' };
+const ORDRE_JEUX_2 = ['sudoku', 'bulles', 'solitaire', 'dames', 'backgammon'];
+const NOMS_JEUX = { sudoku: 'Sudoku', solitaire: 'Solitaire', dames: 'Dames', backgammon: 'Backgammon', bulles: 'Bulles' };
 const NOMS_DIFF = { facile: 'facile', moyen: 'moyen', difficile: 'difficile' };
 
 function difficulte(c, k) {
@@ -38,7 +41,8 @@ function difficulte(c, k) {
 export function niveau(n) {
   const c = Math.floor((n - 1) / PAR_CHAPITRE), k = (n - 1) % PAR_CHAPITRE;
   const chapitre = CHAPITRES[c % CHAPITRES.length];
-  const jeu = ORDRE_JEUX[(k + c) % ORDRE_JEUX.length];
+  const ordre = c === 0 ? ORDRE_JEUX : ORDRE_JEUX_2;
+  const jeu = ordre[(k + c) % ordre.length];
   const diff = difficulte(c, k);
   const def = { numero: n, id: `n${n}`, chapitre: c, rang: k, nomChapitre: chapitre.nom, teinte: chapitre.teinte, jeu, niveau: diff };
   def.grandDefi = k === PAR_CHAPITRE - 1;
@@ -56,6 +60,12 @@ export function niveau(n) {
     bonus = [
       { texte: `En ${seuil} coups ou moins`, reussi: (d) => d.coups <= seuil },
       { texte: 'Sans indice', reussi: (d) => d.indices === 0 },
+    ];
+  } else if (jeu === 'bulles') {
+    objectif = `Bulles (${NOMS_DIFF[diff]}) : réussir le niveau`;
+    bonus = [
+      { texte: 'Sans indice', reussi: (d) => d.indices === 0 },
+      { texte: 'Avec 3 étoiles de réussite', reussi: (d) => d.etoiles === 3 },
     ];
   } else if (jeu === 'dames') {
     def.taille = c >= 3 && k % 2 === 1 ? 10 : 8;

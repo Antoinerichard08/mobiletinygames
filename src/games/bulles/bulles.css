@@ -1,0 +1,44 @@
+/* Bulles : le plateau (canvas) et les informations de la partie. */
+.bl-body { display: flex; flex-direction: column; gap: 10px; }
+.bl-hud { display: flex; flex-direction: column; gap: 4px; background: var(--surface); border: 2px solid var(--line); border-radius: 16px; padding: 8px 12px; }
+.bl-ligne { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.bl-titre { font-family: var(--font-display); font-size: 1.3rem; }
+.bl-etoiles { color: var(--gold); font-size: 1.5rem; letter-spacing: 2px; text-shadow: 0 1px 0 rgba(0, 0, 0, .2); }
+.bl-etoiles span { color: var(--line); text-shadow: none; }
+.bl-objectif { color: var(--muted); }
+.bl-tirs { font-size: 1.05rem; }
+.bl-tirs b { font-size: 1.6rem; color: var(--brand); }
+.bl-tirs.peu b { color: var(--bad); }
+.bl-score { color: var(--muted); font-weight: 700; }
+.bl-jauge { flex: 1; max-width: 50%; height: 12px; border-radius: 8px; background: var(--line); overflow: hidden; }
+.bl-jauge i { display: block; height: 100%; border-radius: 8px; background: linear-gradient(90deg, #E8504F, #F5C531, #2DBB64, #3B82F6, #9B5DE5); }
+
+.bl-zone { position: relative; display: flex; justify-content: center; }
+.bl-toile { display: block; border-radius: 18px; border: 3px solid var(--line); touch-action: none; box-shadow: 0 6px 18px rgba(0, 0, 0, .15); }
+.bl-chargement {
+  position: absolute; inset: 0; display: grid; place-items: center; font-weight: 700; font-size: 1.2rem;
+  color: #1D2A4A; background: rgba(255, 255, 255, .55); border-radius: 18px;
+}
+.bl-jouer { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); min-width: 200px; min-height: 64px; font-size: 1.3rem; }
+.bl-side { display: flex; flex-direction: column; gap: 10px; }
+
+.bl-niveaux { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; max-height: 50vh; overflow-y: auto; padding: 2px; }
+.bl-niv { min-height: 64px; border-radius: 14px; border: 2px solid var(--line); background: var(--surface); display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; }
+.bl-niv b { font-size: 1.3rem; }
+.bl-niv small { color: var(--gold); letter-spacing: 1px; }
+.bl-niv.courant { border-color: var(--brand); background: var(--soft); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .bl-jauge i { transition: width .5s cubic-bezier(.2, .8, .2, 1); }
+  .bl-chargement { animation: bl-respire 1.2s ease-in-out infinite; }
+  @keyframes bl-respire { 50% { color: #5E2CA5; } }
+}
+
+/* Téléphone à l'horizontale : le plateau à gauche, les informations et commandes à droite */
+@media (orientation: landscape) and (max-height: 560px) {
+  .bl-body { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 14px; row-gap: 8px; align-items: start; }
+  .bl-zone { grid-column: 1; grid-row: 1 / span 2; }
+  .bl-hud { grid-column: 2; grid-row: 1; margin-right: calc(var(--cote) + 8px); }
+  .bl-side { grid-column: 2; grid-row: 2; }
+  .bl-side .tip { display: none; }
+}

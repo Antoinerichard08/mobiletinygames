@@ -58,7 +58,7 @@ export async function finirPartie(r) {
         { action: 'rejouer', texte: 'Rejouer ce niveau' },
       ]
     : [
-        { action: 'rejouer', texte: r.gagne ? 'Nouvelle partie' : 'Rejouer', principal: true },
+        { action: 'rejouer', texte: r.libelleRejouer || (r.gagne ? 'Nouvelle partie' : 'Rejouer'), principal: true },
         { action: 'fermer', texte: 'Fermer' },
       ];
   return afficherResultat({

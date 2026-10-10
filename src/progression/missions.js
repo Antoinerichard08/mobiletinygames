@@ -13,6 +13,7 @@ export const MODELES = [
   { id: 'gagner-solitaire', texte: 'Gagner une partie de Solitaire', but: 1, etoiles: 2, compte: (r) => r.jeu === 'solitaire' && r.gagne },
   { id: 'gagner-dames', texte: 'Battre l’ordinateur aux Dames', but: 1, etoiles: 2, compte: (r) => r.jeu === 'dames' && r.gagne },
   { id: 'gagner-backgammon', texte: 'Gagner une manche de Backgammon', but: 1, etoiles: 2, compte: (r) => r.jeu === 'backgammon' && r.gagne },
+  { id: 'gagner-bulles', texte: 'Réussir deux niveaux de Bulles', but: 2, etoiles: 2, compte: (r) => r.jeu === 'bulles' && r.gagne },
   { id: 'jouer-2', texte: 'Finir 2 parties, de n’importe quel jeu', but: 2, etoiles: 2, compte: () => true },
   { id: 'gagner-3', texte: 'Gagner 3 parties', but: 3, etoiles: 3, compte: (r) => r.gagne },
   { id: 'niveau', texte: 'Réussir un niveau de la carte', but: 1, etoiles: 2, compte: (r) => Boolean(r.defi) && r.gagne },
