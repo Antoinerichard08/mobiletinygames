@@ -1,6 +1,6 @@
 // Prépare une nouvelle version : met le numéro partout et régénère la liste du cache.
 //   npm run nouvelle-version -- 1.2.0
-// Puis : git commit -am "Version 1.2.0" && git tag v1.2.0 && git push --follow-tags
+// Puis : git commit -am "Version 1.2.0", git tag v1.2.0, git push origin main v1.2.0
 // Sans numéro, le script ne fait que remettre à jour la liste des fichiers dans sw.js.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -33,4 +33,4 @@ modifier('sw.js', (t) =>
   t.replace(/(\/\/ FICHIERS-DEBUT[^\n]*\r?\nconst FICHIERS = \[\r?\n)[\s\S]*?(\r?\n\];\r?\n\/\/ FICHIERS-FIN)/, `$1${liste}$2`),
 );
 
-if (version) console.log(`Version ${version} prête. Pensez à : git commit, git tag v${version}, git push --follow-tags`);
+if (version) console.log(`Version ${version} prête. Ensuite : git commit -am "Version ${version}", git tag v${version}, git push origin main v${version}`);

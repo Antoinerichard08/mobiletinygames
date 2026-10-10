@@ -1,0 +1,10 @@
+{
+  "appId": "io.github.antoinerichard08.salondejeux",
+  "appName": "Salon de Jeux",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": false,
+    "webContentsDebuggingEnabled": false
+  }
+}

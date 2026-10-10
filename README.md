@@ -20,7 +20,16 @@ Les mises à jour arrivent toutes seules : rien à faire.
 
 ### Si l'installation ne marche pas : le fichier APK
 
-*(Cette partie sera prête à la fin du projet.)*
+1. Dans **Chrome**, ouvrez ce lien :
+   **https://github.com/Antoinerichard08/mobiletinygames/releases/latest/download/salon-de-jeux.apk**
+   Si Chrome prévient que le fichier peut être dangereux, touchez **« Télécharger quand même »**.
+2. Quand le téléchargement est fini, touchez **« Ouvrir »** en bas de l'écran.
+3. Si le téléphone affiche *« Pour votre sécurité, votre téléphone n'est pas autorisé à installer des applications inconnues provenant de cette source »* :
+   touchez **« Paramètres »**, activez **« Autoriser cette source »**, puis revenez en arrière avec la flèche **Retour**.
+4. Touchez **« Installer »**, puis **« Ouvrir »**.
+   *(Si un message « Play Protect » apparaît : touchez **« Plus de détails »** puis **« Installer quand même »**.)*
+
+Pour une nouvelle version : refaire les mêmes étapes, le bouton s'appellera **« Mettre à jour »**. Les parties sont conservées.
 
 ### Bon à savoir
 
@@ -108,16 +117,63 @@ git tag v1.1.0
 ```
 
 ```bash
-git push --follow-tags
+git push origin main v1.1.0
 ```
 
-Le téléphone télécharge la nouvelle version à la prochaine ouverture de l'appli (avec internet), puis
-l'applique dès qu'on revient sur l'écran d'accueil.
+Ensuite, tout se fait seul :
+- le push sur `main` republie le site (workflow `pages.yml`, 1 à 2 minutes) ;
+- le tag `v1.1.0` construit l'APK signé et le publie dans la Release **« Salon de Jeux v1.1.0 »**
+  (workflow `apk.yml`, environ 5 minutes). Le lien
+  `https://github.com/Antoinerichard08/mobiletinygames/releases/latest/download/salon-de-jeux.apk`
+  pointe toujours vers la dernière version.
+
+Le tag doit correspondre au numéro de `package.json`, sinon le workflow APK s'arrête avec un message clair.
+
+Côté PWA, le téléphone télécharge la nouvelle version à la prochaine ouverture de l'appli (avec internet),
+puis l'applique dès qu'on revient sur l'écran d'accueil.
 
 ### Configuration GitHub (une seule fois)
 
 - Dépôt **public** `mobiletinygames` (GitHub Pages gratuit).
 - **Settings → Pages → Build and deployment → Source : GitHub Actions**.
+
+### APK Android (Capacitor)
+
+L'APK emballe exactement les mêmes fichiers que le site avec [Capacitor](https://capacitorjs.com) : ils sont
+dans l'APK, donc l'appli marche hors ligne dès la première ouverture (pas de service worker dans l'APK).
+Le dossier `android/` n'est pas versionné : le workflow le régénère à chaque fois avec `npx cap add android`,
+puis `scripts/configurer-android.mjs` règle le numéro de version (`versionCode` = X×10000 + Y×100 + Z),
+les icônes, l'écran de démarrage et l'orientation portrait.
+
+Pour construire l'APK sur son PC (facultatif ; il faut le JDK 21 et le SDK Android, par exemple avec Android Studio) :
+
+```bash
+npm ci && node scripts/preparer-site.mjs www && npx cap add android && node scripts/configurer-android.mjs && npx cap sync android
+```
+
+Puis, dans le dossier `android/` : `./gradlew assembleRelease`.
+
+### Signature de l'APK (une seule fois, très important)
+
+Android n'installe une mise à jour **que si elle est signée avec la même clé** que la version déjà installée.
+La clé est donc générée une seule fois, puis rangée dans les secrets du dépôt :
+
+1. Générer la clé (déjà fait pour ce dépôt : ne pas refaire) :
+   ```bash
+   node scripts/generer-cle.mjs
+   ```
+   Cela crée `cle-android/salon-de-jeux.jks` et `cle-android/secrets-github.txt`. Ce dossier est ignoré par git.
+2. Sur GitHub : **Settings → Secrets and variables → Actions → New repository secret**, et créer les trois
+   secrets indiqués dans `secrets-github.txt` : `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`.
+3. **Sauvegarder le dossier `cle-android/` ailleurs** (clé USB, gestionnaire de mots de passe). Si la clé est perdue,
+   il faudra désinstaller l'appli du téléphone (et perdre les parties en cours) pour installer la suivante.
+
+Le workflow `apk.yml` décode la clé, signe avec `apksigner` puis l'efface aussitôt. Sans les secrets, il s'arrête
+avec un message qui renvoie ici.
+
+> À noter : Google a annoncé que l'installation d'APK hors Play Store exigera progressivement (2026-2027) un
+> développeur enregistré auprès de Google. Si un jour l'APK ne s'installe plus, la PWA reste la solution
+> recommandée : elle n'est pas concernée.
 
 ### Icônes
 
