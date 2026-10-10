@@ -35,7 +35,7 @@ createServer(async (req, res) => {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Introuvable');
   }
 }).listen(PORT, () => {
-  console.log(`Salon de Jeux : http://localhost:${PORT}`);
+  console.log(`Mom's games : http://localhost:${PORT}`);
   for (const ifs of Object.values(networkInterfaces())) {
     for (const i of ifs) if (i.family === 'IPv4' && !i.internal) console.log(`Sur le même Wi-Fi : http://${i.address}:${PORT}`);
   }

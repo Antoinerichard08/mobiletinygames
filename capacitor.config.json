@@ -1,6 +1,6 @@
 {
   "appId": "io.github.antoinerichard08.salondejeux",
-  "appName": "Salon de Jeux",
+  "appName": "Mom's games",
   "webDir": "www",
   "android": {
     "allowMixedContent": false,

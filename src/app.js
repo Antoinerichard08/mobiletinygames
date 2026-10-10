@@ -118,7 +118,7 @@ function afficherAccueil() {
     location.reload();
     return;
   }
-  document.title = 'Salon de Jeux';
+  document.title = "Mom's games";
   const e = etatAventure();
   const courant = niveauCourant(e);
   const ouvert = statut(courant, e) === 'ouvert';
@@ -127,8 +127,9 @@ function afficherAccueil() {
   app.innerHTML = `
     <section id="home" class="screen">
       <div class="home-top">
-        <div>
-          <h1>Salon de Jeux</h1>
+        <img class="logo" src="assets/icons/logo-256.png" alt="" width="64" height="64">
+        <div class="titre">
+          <h1>Mom's games</h1>
           <p class="lede">Vos jeux préférés, sans publicité.</p>
         </div>
         <span class="star-chip" aria-label="Vos étoiles">★ <b>${solde()}</b></span>
@@ -194,7 +195,7 @@ function enveloppe(id, titre, retour, avecPaysage, banniere) {
  * @param {object} options { defi } quand le jeu est lancé depuis la carte des niveaux
  */
 function afficherJeu(jeu, options = {}) {
-  document.title = `${jeu.nom} · Salon de Jeux`;
+  document.title = `${jeu.nom} · Mom's games`;
   const corps = enveloppe(jeu.id, jeu.nom, options.defi ? '← Carte' : '← Accueil', jeu.paysage,
     options.defi ? `Niveau ${options.defi.numero} : ${options.defi.objectif}` : '');
   actif = jeu;
@@ -202,7 +203,7 @@ function afficherJeu(jeu, options = {}) {
 }
 
 function afficherEcran(module, titre) {
-  document.title = `${titre} · Salon de Jeux`;
+  document.title = `${titre} · Mom's games`;
   const corps = enveloppe(module.id, titre, '← Accueil', false, '');
   actif = module;
   module.monter(corps);
@@ -226,7 +227,7 @@ function majZoneInstallation() {
   bouton.hidden = !installation || dejaEnAppli();
   aide.hidden = Boolean(installation) || dejaEnAppli() || installee;
   msg.hidden = !installee;
-  if (installee) msg.textContent = 'C’est installé ! L’icône « Salon de Jeux » est sur l’écran du téléphone.';
+  if (installee) msg.textContent = 'C’est installé ! L’icône « Mom’s games » est sur l’écran du téléphone.';
 }
 
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -259,7 +260,7 @@ function aideInstallation() {
     titre: 'Installer l’appli',
     texte: '1. Touchez les trois petits points ⋮, en haut à droite de Chrome.\n'
       + '2. Touchez « Installer l’application » (ou « Ajouter à l’écran d’accueil », puis « Installer »).\n'
-      + '3. L’icône « Salon de Jeux » apparaît sur l’écran du téléphone.\n\n'
+      + '3. L’icône « Mom’s games » apparaît sur l’écran du téléphone.\n\n'
       + 'Si le menu propose « Ouvrir dans l’application », c’est qu’elle est déjà installée : cherchez l’icône sur l’écran du téléphone.',
     oui: 'J’ai compris',
   });

@@ -1,4 +1,4 @@
-# Salon de Jeux
+# Mom's games
 
 Des jeux classiques **sans aucune publicité**, sans compte et sans internet une fois installés :
 Sudoku, Solitaire, Dames et Backgammon. Plus une **Aventure** (une carte de niveaux, quelques nouveaux
@@ -15,14 +15,14 @@ chaque jour) et **Mon île**, où l'on construit avec les étoiles gagnées en j
 2. Touchez le gros bouton vert **« Installer sur le téléphone »**, en bas de la liste des jeux.
    *(S'il n'apparaît pas : touchez les **trois petits points ⋮** en haut à droite de Chrome, puis **« Installer l'application »**. Selon le téléphone, ce choix s'appelle **« Ajouter à l'écran d'accueil »**.)*
 3. Touchez **« Installer »** pour confirmer.
-4. C'est fini ! L'icône **Salon de Jeux** (deux pions, un blanc et un rouge, sur fond vert) est sur l'écran du téléphone. Elle marche même sans internet.
+4. C'est fini ! L'icône **Mom's games** (une maman souriante entourée de ses jeux) est sur l'écran du téléphone. Elle marche même sans internet.
 
 Les mises à jour arrivent toutes seules : rien à faire.
 
 ### Si l'installation ne marche pas : le fichier APK
 
 1. Dans **Chrome**, ouvrez ce lien :
-   **https://github.com/Antoinerichard08/mobiletinygames/releases/latest/download/salon-de-jeux.apk**
+   **https://github.com/Antoinerichard08/mobiletinygames/releases/latest/download/moms-games.apk**
    Si Chrome prévient que le fichier peut être dangereux, touchez **« Télécharger quand même »**.
 2. Quand le téléchargement est fini, touchez **« Ouvrir »** en bas de l'écran.
 3. Si le téléphone affiche *« Pour votre sécurité, votre téléphone n'est pas autorisé à installer des applications inconnues provenant de cette source »* :
@@ -155,9 +155,9 @@ git push origin main v1.1.0
 
 Ensuite, tout se fait seul :
 - le push sur `main` republie le site (workflow `pages.yml`, 1 à 2 minutes) ;
-- le tag `v1.1.0` construit l'APK signé et le publie dans la Release **« Salon de Jeux v1.1.0 »**
+- le tag `v1.1.0` construit l'APK signé et le publie dans la Release **« Mom's games v1.1.0 »**
   (workflow `apk.yml`, environ 5 minutes). Le lien
-  `https://github.com/Antoinerichard08/mobiletinygames/releases/latest/download/salon-de-jeux.apk`
+  `https://github.com/Antoinerichard08/mobiletinygames/releases/latest/download/moms-games.apk`
   pointe toujours vers la dernière version.
 
 Le tag doit correspondre au numéro de `package.json`, sinon le workflow APK s'arrête avec un message clair.
@@ -214,4 +214,4 @@ avec un message qui renvoie ici.
 npm run icones
 ```
 
-Régénère toutes les icônes (PWA et Android) à partir de `scripts/generer-icones.mjs`, sans dépendance.
+Régénère toutes les icônes (PWA et Android) à partir du logo `design/logo-source.png`, avec `scripts/generer-icones.mjs`, sans dépendance.

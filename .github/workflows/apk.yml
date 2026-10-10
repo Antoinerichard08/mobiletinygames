@@ -1,6 +1,6 @@
 # À chaque tag vX.Y.Z (ou à la main depuis l'onglet Actions) :
 # construit l'APK Android avec Capacitor, le signe avec la clé stable du dépôt,
-# et le publie dans une Release « Salon de Jeux vX.Y.Z » sous le nom salon-de-jeux.apk.
+# et le publie dans une Release « Mom's games vX.Y.Z » sous le nom moms-games.apk.
 name: APK Android
 
 on:
@@ -75,19 +75,19 @@ jobs:
           OUTILS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$OUTILS/zipalign" -p -f 4 android/app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/aligne.apk"
           "$OUTILS/apksigner" sign --ks "$RUNNER_TEMP/cle.jks" --ks-key-alias "$ALIAS" \
-            --ks-pass env:MDP --key-pass env:MDP --out salon-de-jeux.apk "$RUNNER_TEMP/aligne.apk"
-          "$OUTILS/apksigner" verify --print-certs salon-de-jeux.apk
+            --ks-pass env:MDP --key-pass env:MDP --out moms-games.apk "$RUNNER_TEMP/aligne.apk"
+          "$OUTILS/apksigner" verify --print-certs moms-games.apk
           rm -f "$RUNNER_TEMP/cle.jks"
 
       - name: Publier la Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
-          name: Salon de Jeux v${{ steps.version.outputs.version }}
-          files: salon-de-jeux.apk
+          name: Mom's games v${{ steps.version.outputs.version }}
+          files: moms-games.apk
           make_latest: true
           body: |
-            **Pour installer sur Android :** touchez `salon-de-jeux.apk` ci-dessous, puis suivez le README (partie « Pour ma maman »).
+            **Pour installer sur Android :** touchez `moms-games.apk` ci-dessous, puis suivez le README (partie « Pour ma maman »).
 
             Lien direct, toujours vers la dernière version :
-            https://github.com/${{ github.repository }}/releases/latest/download/salon-de-jeux.apk
+            https://github.com/${{ github.repository }}/releases/latest/download/moms-games.apk

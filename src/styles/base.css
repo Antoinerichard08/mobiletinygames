@@ -233,3 +233,9 @@ button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .install-zone { display: flex; flex-direction: column; gap: 8px; }
 .install-zone:not(:has(> :not([hidden]))) { display: none; }
 .install-aide { border-style: dashed; font-weight: 700; }
+
+/* Logo de l'accueil */
+.home-top { align-items: center; }
+.home-top .logo { width: 64px; height: 64px; border-radius: 16px; flex: none; box-shadow: 0 3px 8px rgba(0, 0, 0, .15); }
+.home-top .titre { flex: 1; min-width: 0; }
+.home-top h1 { font-size: 1.9rem; white-space: nowrap; }

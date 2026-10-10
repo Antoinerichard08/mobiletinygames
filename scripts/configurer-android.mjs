@@ -39,3 +39,11 @@ console.log('icônes et écran de démarrage copiés');
 
 // 3. Orientation : libre, comme la PWA (le Solitaire se joue aussi à l'horizontale).
 //    Le modèle Capacitor ne force rien : il n'y a rien à changer.
+
+// 4. Nom de l'appli : Android refuse une apostrophe non échappée (« Mom's games ») dans strings.xml.
+//    Capacitor l'échappe déjà ; on vérifie quand même, sans erreur s'il n'y a rien à faire.
+{
+  const chemin = join(android, 'app/src/main/res/values/strings.xml');
+  const t = readFileSync(chemin, 'utf8');
+  writeFileSync(chemin, t.replace(/(<string[^>]*>)([^<]*)(<\/string>)/g, (_, a, texte, b) => a + texte.replace(/(?<!\\)'/g, "\\'") + b));
+}
