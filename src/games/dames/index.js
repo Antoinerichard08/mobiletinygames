@@ -5,6 +5,7 @@ import { $, $$, chargerStyle, pluriel } from '../../core/outils.js';
 import { lire, ecrire } from '../../core/stockage.js';
 import { confirmer, demander } from '../../core/dialogue.js';
 import { finirPartie } from '../../core/partie.js';
+import { revenir } from '../../core/navigation.js';
 import { creerTravailleur } from '../../core/travail.js';
 import { animer, attendre, secouer, pop, mouvementReduit, COURBE_DOUCE, COURBE_REBOND } from '../../core/mouvement.js';
 import { BLANC, ROUGE, plateauInitial, coupsPermis, jouerCoup, compter } from './moteur.js';
@@ -298,7 +299,7 @@ async function finDePartie() {
     },
   });
   if (choix === 'rejouer') nouvelle();
-  else if (choix === 'carte') location.hash = '#/niveaux';
+  else if (choix === 'carte') revenir('niveaux');
 }
 
 async function tourOrdinateur() {

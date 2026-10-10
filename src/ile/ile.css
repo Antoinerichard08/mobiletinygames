@@ -1,0 +1,61 @@
+/* Mon île : la mer, l'île en pixel art, la boutique de bâtiments. */
+.ile-body { display: flex; flex-direction: column; gap: 12px; }
+.ile-entete { display: flex; align-items: center; gap: 12px; }
+.beaute { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.beaute small { color: var(--muted); font-weight: 400; }
+.beaute .barre { height: 12px; border-radius: 8px; background: var(--line); overflow: hidden; }
+.beaute .barre i { display: block; height: 100%; background: linear-gradient(90deg, var(--brand), var(--gold)); border-radius: 8px; }
+.ile-nav { display: flex; align-items: center; justify-content: center; gap: 12px; text-align: center; }
+.ile-nav p { display: flex; flex-direction: column; font-family: var(--font-display); font-size: 1.25rem; }
+.ile-nav small { font-family: var(--font-body); font-size: .9rem; color: var(--muted); }
+.ile-nav .btn { min-width: 56px; font-size: 1.3rem; }
+
+.ile-mer {
+  position: relative; overflow: hidden; border-radius: 22px; padding: 18px 12px; display: grid; place-items: center;
+  background: var(--mer); border: 3px solid var(--mer-fonce); min-height: 200px;
+}
+.ile-grille { display: grid; position: relative; z-index: 1; filter: drop-shadow(0 4px 0 rgba(0, 0, 0, .12)); }
+.case { position: relative; width: var(--ts); height: var(--ts); padding: 0; border: 0; background: none; cursor: pointer; border-radius: 0; }
+.case .tuile { width: 100%; height: 100%; }
+.case.possible::after { content: ""; position: absolute; inset: 2px; border: 2px dashed rgba(255, 255, 255, .85); border-radius: 6px; pointer-events: none; }
+.case.meilleur::after { border: 3px solid var(--gold); box-shadow: 0 0 12px var(--gold); }
+.case .gain {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2; pointer-events: none;
+  background: rgba(21, 34, 29, .82); color: #fff; font-weight: 700; font-size: calc(var(--ts) * .34); min-width: 1.8em;
+  padding: 1px 5px; border-radius: 999px; text-align: center;
+}
+.case.meilleur .gain { background: var(--gold); color: #3A2A00; }
+.envol {
+  position: absolute; left: 50%; top: 0; z-index: 5; pointer-events: none; color: #fff; font-weight: 700; font-size: 1.3rem;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .45);
+}
+.navire { position: absolute; z-index: 0; opacity: .95; pointer-events: none; }
+.navire.n1 { top: 8%; left: -40px; }
+.navire.n2 { bottom: 6%; right: -40px; }
+
+.boutique { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.carte-bat {
+  display: grid; grid-template-columns: 48px 1fr; grid-template-rows: auto auto auto; column-gap: 10px; align-items: center;
+  text-align: left; padding: 10px; border-radius: 16px; border: 2px solid var(--line); background: var(--surface); cursor: pointer; min-height: 96px;
+}
+.carte-bat .tuile { grid-row: 1 / span 3; }
+.carte-bat .cb-nom { font-weight: 700; }
+.carte-bat .cb-prix { color: #9A6C00; font-weight: 700; }
+.carte-bat .cb-desc { color: var(--muted); font-size: .85rem; line-height: 1.2; }
+.carte-bat.choisi { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold); background: var(--soft); }
+.carte-bat:disabled { opacity: .55; cursor: default; }
+.bat-tete { display: flex; align-items: center; gap: 14px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .beaute .barre i { transition: width .6s cubic-bezier(.2, .8, .2, 1); }
+  .case.meilleur::after { animation: ile-pulse 1.1s ease-in-out infinite; }
+  @keyframes ile-pulse { 50% { box-shadow: 0 0 2px var(--gold); } }
+  .navire.n1 { animation: traversee 38s linear infinite, tangage 3s ease-in-out infinite; }
+  .navire.n2 { animation: traversee-inverse 46s linear infinite 6s, tangage 3.4s ease-in-out infinite; }
+  @keyframes traversee { from { left: -40px; } to { left: calc(100% + 40px); } }
+  @keyframes traversee-inverse { from { right: -40px; } to { right: calc(100% + 40px); } }
+  @keyframes tangage { 50% { transform: translateY(3px) rotate(-3deg); } }
+  .carte-bat { transition: transform .12s, border-color .2s, box-shadow .2s; }
+  .carte-bat:active:not(:disabled) { transform: scale(.97); }
+}
+@media (prefers-reduced-motion: reduce) { .navire { display: none; } }

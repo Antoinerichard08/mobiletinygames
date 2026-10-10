@@ -5,6 +5,7 @@ import { $, chargerStyle, pluriel } from '../../core/outils.js';
 import { lire, ecrire } from '../../core/stockage.js';
 import { demander } from '../../core/dialogue.js';
 import { finirPartie } from '../../core/partie.js';
+import { revenir } from '../../core/navigation.js';
 import { creerTravailleur } from '../../core/travail.js';
 import { noterPositions, animerDepuis, animer, secouer, attendre, mouvementReduit, COURBE_REBOND } from '../../core/mouvement.js';
 import {
@@ -293,7 +294,7 @@ async function victoire() {
     texte: `Vous avez gagné en ${pluriel(E.jeu.moves, 'coup')}.`,
   });
   if (choix === 'rejouer') nouvelle(E.niveau);
-  else if (choix === 'carte') location.hash = '#/niveaux';
+  else if (choix === 'carte') revenir('niveaux');
 }
 
 async function jouer(o, dest) {

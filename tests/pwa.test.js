@@ -51,3 +51,13 @@ test('chaque jeu du registre a un module complet', async () => {
     }
   }
 });
+
+test('les images et polices utilisées par les styles sont dans le cache hors ligne', () => {
+  const liste = new Set(listerFichiersAppli());
+  for (const css of listerFichiersAppli().filter((f) => f.endsWith('.css'))) {
+    for (const [, url] of lireTexte(css).matchAll(/url\('([^']+)'\)/g)) {
+      const chemin = join(css, '..', url).replace(/\\/g, '/');
+      assert.ok(liste.has(chemin), `${url} (utilisé par ${css}) n’est pas mis en cache`);
+    }
+  }
+});

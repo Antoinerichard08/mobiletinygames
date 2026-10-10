@@ -1,7 +1,8 @@
 # Salon de Jeux
 
 Des jeux classiques **sans aucune publicité**, sans compte et sans internet une fois installés :
-Sudoku, Solitaire et Dames (le Backgammon arrive plus tard).
+Sudoku, Solitaire, Dames et Backgammon. Plus une **Aventure** (une carte de niveaux, quelques nouveaux
+chaque jour) et **Mon île**, où l'on construit avec les étoiles gagnées en jouant.
 
 ---
 
@@ -35,7 +36,13 @@ Pour une nouvelle version : refaire les mêmes étapes, le bouton s'appellera **
 
 - Vos parties sont **enregistrées automatiquement**. Vous pouvez fermer l'application, vous reprendrez où vous en étiez.
 - Le bouton **« Annuler »** défait le dernier coup. Le bouton **« Indice »** vous aide quand vous êtes bloquée.
-- Le bouton **Retour** du téléphone ramène à la liste des jeux.
+- Le bouton **Retour** du téléphone ramène à l'écran précédent.
+- Chaque partie gagnée rapporte des **étoiles** ★ (1 en facile, 2 en moyen, 3 en difficile ; 1 d'encouragement si l'on perd).
+- **Aventure** : une carte en mer, d'escale en escale. **3 nouveaux niveaux s'ouvrent chaque jour** ; les niveaux
+  déjà réussis se rejouent quand on veut pour gagner plus d'étoiles. Les **missions du jour** donnent des étoiles en plus.
+- **Mon île** : choisissez un bâtiment en bas, puis touchez une case : le chiffre montre les points de beauté gagnés,
+  la meilleure case brille. Une île très belle en fait apparaître une nouvelle !
+- Le **Solitaire**, les **Dames**, le **Sudoku** et le **Backgammon** se jouent aussi téléphone tourné à l'horizontale.
 
 ---
 
@@ -53,13 +60,16 @@ Pour une nouvelle version : refaire les mêmes étapes, le bouton s'appellera **
 
 ```
 index.html, manifest.webmanifest, sw.js   l'appli et sa partie PWA
-src/app.js                                accueil, navigation (#/jeu), installation, mises à jour
+src/app.js                                accueil, navigation (#/jeu, #/niveaux, #/niveau/N, #/ile), installation, mises à jour
 src/registre.js                           LA liste des jeux : l'accueil est généré depuis elle
-src/core/                                 outils, stockage, fenêtre de confirmation
+src/core/                                 outils, stockage, dialogues, animations (mouvement.js), étoiles,
+                                          fin de partie commune (partie.js), calculs en arrière-plan (travail.js)
+src/progression/                          Aventure : niveaux.js (carte, rythme quotidien), missions.js, carte.js (écran)
+src/ile/                                  Mon île : regles.js (sans navigateur, testé), index.js (écran)
 src/games/<jeu>/index.js                  affichage et commandes du jeu
 src/games/<jeu>/moteur.js                 règles, IA, génération : sans navigateur, testé avec Node
 src/games/<jeu>/<jeu>.css                 styles propres au jeu
-assets/                                   polices, icônes (PWA et Android)
+assets/                                   polices, icônes (PWA et Android), tuiles de l'île (assets/ile, CC0)
 scripts/                                  serveur local, icônes, version, préparation du site
 tests/                                    tests Node (node:test)
 .github/workflows/                        publication GitHub Pages (et APK)
@@ -82,21 +92,44 @@ tout de suite ; ajoutez `?sw=1` à l'adresse pour tester le mode hors ligne.
 npm test
 ```
 
-Les tests couvrent le moteur de chaque jeu et la cohérence de la PWA (manifeste, liste du cache, versions).
+Les tests couvrent le moteur de chaque jeu (y compris des parties ordinateur contre ordinateur vérifiées coup
+par coup), le solveur du Solitaire, la progression (niveaux, rythme quotidien, missions), les règles de l'île
+et la cohérence de la PWA (manifeste, liste du cache, versions, fichiers utilisés par les styles).
 
 ### Ajouter un jeu
 
 1. Créer `src/games/<jeu>/` avec :
    - `moteur.js` : les règles, sans `document` ni `window`, pour pouvoir le tester ;
-   - `index.js` qui exporte par défaut `{ id, nom, description, icone, monter(conteneur), demonter() }`
-     (et, en option, `resume()` qui renvoie un texte court comme « Partie en cours ») ;
+   - `index.js` qui exporte par défaut `{ id, nom, description, icone, monter(conteneur, options), demonter() }`
+     et, en option, `resume()` (texte court comme « Partie en cours ») et `paysage: true` si le jeu a une mise en
+     page horizontale ;
+   - en fin de partie, appeler `finirPartie({ jeu, gagne, difficulte, defi: options.defi, details })`
+     (`src/core/partie.js`) : étoiles, victoires, missions et écran de résultat sont gérés pour vous ;
    - `<jeu>.css`, chargé par `index.js` avec `chargerStyle(new URL('./<jeu>.css', import.meta.url))`.
 2. L'importer dans `src/registre.js` et l'ajouter au tableau `JEUX`.
 3. Ajouter `tests/<jeu>.test.js`.
 4. Lancer `npm run nouvelle-version` pour remettre à jour la liste des fichiers mis en cache, puis `npm test`.
 
 Les autres jeux ne sont pas touchés. `monter()` reçoit un conteneur vide sous la barre « ← Accueil » ;
-`demonter()` est appelé quand on quitte le jeu.
+`demonter()` est appelé quand on quitte le jeu. Quand le jeu est lancé depuis la carte, `options.defi` donne le
+niveau imposé (`defi.niveau`, `defi.taille`…) : il faut alors utiliser une sauvegarde à part et masquer le choix
+du niveau. Pour qu'il apparaisse sur la carte, l'ajouter à `ORDRE_JEUX` dans `src/progression/niveaux.js`.
+
+### Choix techniques et sources d'inspiration
+
+Avant d'écrire les jeux, nous avons cherché les meilleurs projets libres. Les moteurs les plus forts
+(**Scan** pour les dames internationales, **GNU Backgammon**) sont sous licence GPL-3 et très lourds ; pour garder
+une appli légère, rapide sur un vieux téléphone et sous licence MIT, leurs techniques ont été réécrites simplement :
+
+- **Dames** : négamax alpha-bêta, approfondissement progressif, table de transposition (hachage de Zobrist),
+  ordre des coups par historique, prolongement des prises ; calcul dans un Web Worker, limité à 2,5 s.
+- **Backgammon** : évaluation inspirée de pubeval et gnubg (course, pions exposés et lancers qui les frappent,
+  primes, ancres) ; le niveau Difficile regarde la meilleure réponse adverse sur les 21 lancers possibles.
+- **Solitaire** : un solveur (recherche « meilleur d'abord » avec table de transposition, coups sûrs joués d'office,
+  comme Solvitaire) ne distribue que des donnes gagnables en Facile et Moyen.
+- **Aventure** : le modèle de la « carte saga » popularisé par Candy Crush, avec un rythme quotidien.
+- **Mon île** : inspiré d'*Islanders* (points selon les voisins), sans malus, sans minuteur, sans échec.
+- **Graphismes de l'île et de la carte** : pack « Tiny Islands » de Majadroid (CC0), dans `assets/ile`.
 
 ### Publier une nouvelle version
 

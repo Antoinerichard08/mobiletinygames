@@ -5,7 +5,7 @@ import { ajouterVictoire } from './stockage.js';
 import { ajouterEtoiles, etoilesPartie } from './etoiles.js';
 import { annoncer } from './evenements.js';
 
-let gestionDefi = null; // (resultat) => { etoiles, titre, texte, boutons }
+let gestionDefi = null; // (resultat) => { etoilesGagnees, etoilesNiveau, titre, texte }
 const analyses = []; // (resultat) => [{ texte, etoiles }] : récompenses supplémentaires (missions…)
 
 export function definirGestionDefi(f) {
@@ -31,8 +31,9 @@ export function recompenser(r) {
   if (r.gagne) ajouterVictoire(r.jeu);
   if (etoiles > 0) ajouterEtoiles(etoiles, r.jeu);
   const bonus = [];
+  const complet = { ...r, etoiles };
   for (const a of analyses) {
-    for (const b of a(r) || []) {
+    for (const b of a(complet) || []) {
       bonus.push(b);
       if (b.etoiles > 0) ajouterEtoiles(b.etoiles, 'bonus');
     }

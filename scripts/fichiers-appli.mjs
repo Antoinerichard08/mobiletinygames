@@ -24,6 +24,7 @@ export function listerFichiersAppli() {
     ...[
       ...parcourir('assets/fonts', (n) => n.endsWith('.woff2')),
       ...parcourir('assets/icons', (n) => n.endsWith('.png')),
+      ...parcourir('assets/ile', (n) => n.endsWith('.png')),
       ...parcourir('src', () => true),
     ].sort(),
   ];

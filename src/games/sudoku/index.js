@@ -3,6 +3,7 @@ import { $, $$, chargerStyle, pluriel } from '../../core/outils.js';
 import { lire, ecrire } from '../../core/stockage.js';
 import { confirmer, demander } from '../../core/dialogue.js';
 import { finirPartie } from '../../core/partie.js';
+import { revenir } from '../../core/navigation.js';
 import { animer, attendre, pop, secouer, mouvementReduit, COURBE_REBOND } from '../../core/mouvement.js';
 import { NIVEAUX, NOMS_NIVEAUX, VOISINS, genererGrille, conflits } from './moteur.js';
 
@@ -197,7 +198,7 @@ async function apresCoup() {
       details: { indices: S.indices, erreurs: S.erreurs, annulations: S.annulations },
     });
     if (choix === 'rejouer') nouvelleGrille();
-    else if (choix === 'carte') location.hash = '#/niveaux';
+    else if (choix === 'carte') revenir('niveaux');
   }
 }
 
@@ -208,7 +209,7 @@ async function vagueDeVictoire() {
   const r0 = Math.floor(depart / 9), c0 = depart % 9;
   const css = getComputedStyle(document.documentElement);
   const fond = css.getPropertyValue('--surface').trim(), vague = css.getPropertyValue('--sdk-sel').trim();
-  $('#sdk-board .cell', racine).forEach((el, i) => {
+  $$('#sdk-board .cell', racine).forEach((el, i) => {
     const d = Math.hypot(Math.floor(i / 9) - r0, (i % 9) - c0);
     animer(el, [
       { transform: 'scale(1)', backgroundColor: fond },

@@ -6,6 +6,7 @@ import { $, chargerStyle, pluriel } from '../../core/outils.js';
 import { lire, ecrire } from '../../core/stockage.js';
 import { demander } from '../../core/dialogue.js';
 import { finirPartie } from '../../core/partie.js';
+import { revenir } from '../../core/navigation.js';
 import { creerTravailleur } from '../../core/travail.js';
 import { animer, attendre, secouer, mouvementReduit, COURBE_DOUCE, COURBE_REBOND } from '../../core/mouvement.js';
 import {
@@ -569,7 +570,7 @@ async function finManche(g) {
       details: { points, scoreJoueur: B.score[BLANC], scoreOrdi: B.score[NOIR], indices: B.indices, annulations: B.annulations, gammon: points >= 2 && gagne },
     });
     if (choix === 'rejouer') return choisirNouveauMatch(true);
-    if (choix === 'carte') location.hash = '#/niveaux';
+    if (choix === 'carte') revenir('niveaux');
     return;
   }
   // écran entre deux manches : on sait où on en est avant de continuer

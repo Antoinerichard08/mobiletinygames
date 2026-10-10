@@ -204,3 +204,27 @@ button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
   ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
 }
 #sheet-text { white-space: pre-line; }
+
+/* ---------- Tuiles pixel art « Tiny Islands » (Majadroid, CC0) ---------- */
+:root { --mer: #639BFF; --mer-fonce: #4F86EA; --herbe: #328C19; }
+.tuile {
+  display: block; width: var(--ts); height: var(--ts); flex: none;
+  background-image: url('../../assets/ile/tuiles.png'); background-repeat: no-repeat;
+  background-size: calc(var(--ts) * 14) calc(var(--ts) * 10);
+  background-position: calc(var(--tc) * var(--ts) * -1) calc(var(--tr) * var(--ts) * -1);
+  image-rendering: pixelated; image-rendering: crisp-edges;
+}
+.ilot { display: grid; width: max-content; }
+
+/* ---------- Accueil : modes de jeu, missions ---------- */
+.tiles.grandes .tile { min-height: 116px; border-width: 3px; border-color: var(--brand); }
+.ic-mer { fill: var(--mer); }
+.titre-section { font-family: var(--font-display); font-size: 1.3rem; margin-top: 4px; }
+.titre-section b { font-family: var(--font-body); font-size: 1rem; background: var(--soft); border-radius: 999px; padding: 2px 10px; vertical-align: middle; }
+.missions-accueil { background: var(--surface); border: 2px solid var(--line); border-radius: 20px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.missions-accueil ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.missions-accueil li { display: flex; align-items: center; gap: 10px; }
+.missions-accueil li small { color: #9A6C00; font-weight: 700; margin-left: auto; white-space: nowrap; }
+.missions-accueil li.ok { color: var(--muted); }
+.missions-accueil .coche { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; flex: none; font-weight: 700; color: var(--on-brand); }
+.missions-accueil li.ok .coche { background: var(--brand); border-color: var(--brand); }
