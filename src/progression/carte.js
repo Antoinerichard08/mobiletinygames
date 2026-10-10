@@ -7,6 +7,7 @@ import { T, tuile, ilot, tuileBatiment } from '../core/tuiles.js';
 import { niveau, etat, niveauCourant, statut, prendreDerniere, PAR_CHAPITRE, CHAPITRES, JETONS_PAR_JOUR } from './niveaux.js';
 import { liste as listeMissions, coffreOuvert, BONUS_COFFRE } from './missions.js';
 import { solde } from '../core/etoiles.js';
+import { modeDev } from '../core/config.js';
 
 chargerStyle(new URL('./carte.css', import.meta.url));
 
@@ -110,7 +111,7 @@ function dessinerEntete(e, courant) {
   if (statut(courant, e) === 'ouvert') infoJour = `${pluriel(e.jetons, 'nouveau niveau', 'nouveaux niveaux')} à découvrir aujourd’hui`;
   else infoJour = `Revenez demain pour ${pluriel(JETONS_PAR_JOUR, 'nouveau niveau', 'nouveaux niveaux')} !`;
   $('.carte-entete', racine).innerHTML = `
-    <div class="ligne"><span class="star-chip">★ <b>${solde()}</b></span><span class="jour">${infoJour}</span></div>
+    <div class="ligne"><span class="star-chip">★ <b>${modeDev() ? "∞" : solde()}</b></span><span class="jour">${infoJour}</span></div>
     <button class="btn missions-btn" id="carte-missions">Missions du jour <b>${faites}/3</b>${coffreOuvert() ? ' ✓' : ''}</button>`;
   $('#carte-missions', racine).addEventListener('click', montrerMissions);
 }

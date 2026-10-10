@@ -4,6 +4,7 @@
 // Chaque niveau : un jeu, une difficulté, un objectif ; 1 étoile pour la victoire, +1 par objectif bonus réussi.
 // Rythme : quelques NOUVEAUX niveaux par jour (« jetons ») ; les niveaux déjà gagnés se rejouent à volonté.
 import { lire, ecrire } from '../core/stockage.js';
+import { modeDev } from '../core/config.js';
 
 export const PAR_CHAPITRE = 12;
 export const JETONS_PAR_JOUR = 3;
@@ -129,6 +130,7 @@ export function niveauCourant(e = etat()) {
 /** 'gagne' (déjà réussi), 'ouvert' (jouable maintenant), 'demain' (pas de nouveau niveau aujourd'hui), 'verrouille'. */
 export function statut(n, e = etat()) {
   if ((e.etoiles[n] || 0) > 0) return 'gagne';
+  if (modeDev()) return 'ouvert'; // mode développeur : tout est ouvert
   const courant = niveauCourant(e);
   if (n > courant) return 'verrouille';
   return e.jetons > 0 ? 'ouvert' : 'demain';

@@ -2,6 +2,7 @@
 // Sans dépendance au navigateur (testé avec Node).
 import { lire, ecrire } from './stockage.js';
 import { annoncer } from './evenements.js';
+import { modeDev, ETOILES_DEV } from './config.js';
 
 const CLE = 'etoiles';
 
@@ -10,7 +11,7 @@ function etat() {
 }
 
 /** Étoiles disponibles. */
-export const solde = () => etat().solde;
+export const solde = () => (modeDev() ? ETOILES_DEV : etat().solde);
 /** Étoiles gagnées depuis le début (ne baisse jamais). */
 export const totalGagne = () => etat().total;
 
@@ -20,12 +21,13 @@ export function ajouterEtoiles(n, raison = '') {
   e.solde += n;
   e.total += n;
   ecrire(CLE, e);
-  annoncer('etoiles', { solde: e.solde, gain: n, raison });
+  annoncer('etoiles', { solde: solde(), gain: n, raison });
   return e.solde;
 }
 
 /** Dépense si possible ; renvoie true si c'est fait. */
 export function depenserEtoiles(n) {
+  if (modeDev()) return true; // crédits illimités
   const e = etat();
   if (n > e.solde) return false;
   e.solde -= n;

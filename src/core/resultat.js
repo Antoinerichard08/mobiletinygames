@@ -1,6 +1,7 @@
 // Écran de fin de partie : titre, étoiles qui apparaissent une à une, bonus éventuels, gros boutons.
 import { animer, apparaitre, attendre, COURBE_REBOND, mouvementReduit } from './mouvement.js';
 import { solde } from './etoiles.js';
+import { modeDev } from './config.js';
 
 let fond = null;
 
@@ -38,7 +39,7 @@ export function afficherResultat({ titre, texte, etoiles, etoilesNiveau = null, 
       <p class="res-text"></p>
       <p class="res-gain">${etoiles > 0 ? `+${etoiles} étoile${etoiles > 1 ? 's' : ''}` : ''}</p>
       <ul class="res-bonus">${bonus.map(() => '<li></li>').join('')}</ul>
-      <p class="res-total">Vous avez maintenant <strong>${solde()}</strong> ★</p>
+      <p class="res-total">Vous avez maintenant <strong>${modeDev() ? "∞" : solde()}</strong> ★</p>
       <div class="sheet-actions">
         ${boutons.map((b, i) => `<button class="btn ${b.principal ? 'primary' : ''}" data-i="${i}"></button>`).join('')}
       </div>

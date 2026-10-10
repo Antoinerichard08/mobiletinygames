@@ -192,8 +192,11 @@ export function beauteIle(ile) {
   return s;
 }
 export const beauteTotale = (e) => e.iles.reduce((s, ile) => s + beauteIle(ile), 0);
-export const ilesOuvertes = (e) => ILES.filter((ile) => beauteTotale(e) >= ile.seuil).length;
-export const estDebloque = (e, type) => beauteTotale(e) >= ((BATIMENTS[type] || DECORS[type]).debloque || 0);
+// Mode développeur : tout est débloqué (réglé par l'écran de l'île).
+let toutOuvert = false;
+export const ouvrirTout = (oui) => { toutOuvert = Boolean(oui); };
+export const ilesOuvertes = (e) => (toutOuvert ? ILES.length : ILES.filter((ile) => beauteTotale(e) >= ile.seuil).length);
+export const estDebloque = (e, type) => toutOuvert || beauteTotale(e) >= ((BATIMENTS[type] || DECORS[type]).debloque || 0);
 
 export function prochainPalier(e) {
   const b = beauteTotale(e);

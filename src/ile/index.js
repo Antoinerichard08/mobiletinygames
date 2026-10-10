@@ -15,6 +15,8 @@ import {
   apercu, habitants, peutPayer, manque, niveauMax, pointsCase,
 } from './regles.js';
 import { creerVie } from './vie.js';
+import { ouvrirTout } from './regles.js';
+import { modeDev } from '../core/config.js';
 
 chargerStyle(new URL('./ile.css', import.meta.url));
 
@@ -38,8 +40,14 @@ const maintenant = () => Date.now();
 const ile = () => E.iles[E.active];
 function charger() {
   E = migrer(lire(CLE, null), maintenant());
+  ouvrirTout(modeDev());
+  remplirSiDev();
 }
-const sauver = () => ecrire(CLE, E);
+/** Mode développeur : ressources illimitées (on remplit le grenier à chaque action). */
+function remplirSiDev() {
+  if (modeDev()) for (const r of RESSOURCES) E.ressources[r] = Math.max(E.ressources[r], 9999);
+}
+const sauver = () => { remplirSiDev(); ecrire(CLE, E); };
 const dire = (t) => { const el = $('#ile-status', racine); if (el) el.innerHTML = t || ''; };
 const payerEtoiles = (n) => depenserEtoiles(n);
 
@@ -207,7 +215,7 @@ function dessinerEntete() {
   if (!racine) return;
   const r = E.ressources;
   $('#ile-res', racine).innerHTML = `
-    <span class="res-puce" data-res="etoiles" aria-label="${solde()} étoiles">${icone('etoiles', 22)}<b>${solde()}</b></span>
+    <span class="res-puce" data-res="etoiles" aria-label="${solde()} étoiles">${icone('etoiles', 22)}<b>${modeDev() ? "∞" : solde()}</b></span>
     ${RESSOURCES.map((x) => `<span class="res-puce" data-res="${x}" aria-label="${r[x]} ${NOM_RES[x]}">${icone(x, 22)}<b>${r[x]}</b></span>`).join('')}
     <span class="res-puce" aria-label="${habitants(E)} habitants">${sprite(S.habitant(0, 0), 26)}<b>${habitants(E)}</b></span>`;
   const total = beauteTotale(E), palier = prochainPalier(E);

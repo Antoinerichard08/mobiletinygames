@@ -48,6 +48,10 @@ Pour une nouvelle version : refaire les mêmes étapes, le bouton s'appellera **
 - **Bulles** : posez le doigt là où vous voulez envoyer la bulle (une ligne montre le chemin), levez-le pour tirer.
   Trois bulles de la même couleur éclatent, et tout ce qui ne tient plus tombe. Chaque couleur a son symbole
   (cœur, losange, triangle, étoile, rond, carré). S'il manque des bulles, 5 de plus sont offertes une fois par niveau.
+  Au fil des niveaux arrivent des bonbons spéciaux : **+3** (3 bulles en plus), **étoile** (fait disparaître toute
+  une couleur), **éclair** (vide sa rangée), **glace** (il faut la toucher deux fois), bonbons **à deux couleurs** et
+  **mystère**. Plus on enchaîne les éclats, plus le score monte (jusqu'à ×3). Les 3 étoiles du haut se remplissent
+  avec le score : à la fin, « Rejouer pour faire mieux » permet de retenter sa chance. Le bouton ⏸ ouvre la pause.
 - Le **Solitaire**, les **Dames**, le **Sudoku**, le **Backgammon** et les **Bulles** se jouent aussi téléphone tourné à l'horizontale.
 
 ---
@@ -94,6 +98,15 @@ npm start
 Puis ouvrir http://localhost:8080. En local, le service worker est désactivé pour voir ses modifications
 tout de suite ; ajoutez `?sw=1` à l'adresse pour tester le mode hors ligne.
 
+### Mode développeur (étoiles infinies)
+
+Pour tout tester sans jouer des heures, ouvrez l'appli avec **`?dev=1`** à la fin de l'adresse, par exemple
+https://antoinerichard08.github.io/mobiletinygames/?dev=1 : étoiles infinies (affichées ∞), tous les niveaux de
+l'Aventure et des Bulles ouverts, bonus des Bulles gratuits, tout débloqué sur l'île avec des ressources pleines.
+Le réglage est **mémorisé sur ce téléphone seulement** (les autres ne sont pas touchés). Pour revenir à la normale :
+le bouton « Quitter ce mode » du bandeau de l'accueil, ou `?dev=0` dans l'adresse. Les vraies étoiles gagnées
+entre-temps sont conservées.
+
 ### Lancer les tests
 
 ```bash
@@ -139,6 +152,10 @@ une appli légère, rapide sur un vieux téléphone et sous licence MIT, leurs t
   remplissage (3 bulles ou plus), chute de tout ce qui n'est plus relié au plafond. Niveaux **générés** (formes, grappes
   de couleurs, pierres, glace, bombes, poussins à libérer) puis **joués par un joueur automatique** : un niveau n'est
   gardé que s'il est gagnable, et le nombre de bulles données comme les étoiles se calent sur ses parties.
+  Les étoiles se gagnent **au score** (paliers calculés à partir du score médian du joueur automatique). Les bonbons
+  spéciaux arrivent progressivement (+3 dès le niveau 5, étoile 8, glace 10, éclair 12, bicolore 16, mystère 22) et ne
+  dépassent jamais 40 % des cases. Le skin « bonbons » est entièrement **dessiné par le code** (`rendu.js`, mis en
+  cache dans des `OffscreenCanvas`) : les visuels de référence étaient payants, aucune image n'en est reprise.
 - **Aventure** : le modèle de la « carte saga » popularisé par Candy Crush, avec un rythme quotidien.
 - **Mon île** : inspiré d'*Islanders* (points selon les voisins), sans malus, sans minuteur, sans échec.
 - **Graphismes de l'île et de la carte** : pack « Tiny Islands » de Majadroid (CC0), dans `assets/ile`. Les habitants,

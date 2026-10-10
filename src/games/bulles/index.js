@@ -1,19 +1,22 @@
-// Bulles : jeu de tir de bulles. Règles dans moteur.js, niveaux générés (et vérifiés) par generateur.js.
+// Bulles : jeu de tir de bonbons. Règles dans moteur.js, niveaux générés (et vérifiés) par generateur.js,
+// dessin des bonbons dans rendu.js.
 // Visée simple : on pose le doigt où l'on veut envoyer la bulle (la trajectoire s'affiche), on lève le doigt : elle part.
-// Dessin sur canvas ; l'animation ne tourne que lorsque quelque chose bouge.
+// L'animation ne tourne que lorsque quelque chose bouge.
 import { $, chargerStyle, pluriel } from '../../core/outils.js';
 import { lire, ecrire } from '../../core/stockage.js';
 import { demander } from '../../core/dialogue.js';
-import { finirPartie } from '../../core/partie.js';
+import { recompenser } from '../../core/partie.js';
 import { revenir } from '../../core/navigation.js';
 import { creerTravailleur } from '../../core/travail.js';
-import { animer, mouvementReduit } from '../../core/mouvement.js';
+import { animer, attendre, mouvementReduit, COURBE_REBOND } from '../../core/mouvement.js';
+import { solde, depenserEtoiles } from '../../core/etoiles.js';
+import { modeDev } from '../../core/config.js';
 import {
   LARGEUR, SQ, RANGEES_MAX, DEPART, ANGLE_MIN, ANGLE_MAX, centre, cloner, cases, trajectoire, resoudre, reussi,
-  debordement, couleursPresentes, nbPoussins, points, charge, SEUIL_BONUS,
+  debordement, couleursPresentes, nbPoussins, points, charge, SEUIL_BONUS, reussite, multiplicateur, BONUS_RESTE,
 } from './moteur.js';
 import { genererNiveau, meilleurCoup, etoilesNiveau, niveauPourDefi } from './generateur.js';
-import { PALETTE, dessinerBulle, dessinerPoussin } from './rendu.js';
+import { PALETTE, dessinerBulle, dessinerPoussin, fabriquerFond, reglerSymboles } from './rendu.js';
 
 chargerStyle(new URL('./bulles.css', import.meta.url));
 
@@ -24,21 +27,27 @@ const usine = creerTravailleur(new URL('./generateur-worker.js', import.meta.url
 const HAUTEUR = DEPART.y + 2.6; // hauteur du terrain, en unités
 const VITESSE = 0.05; // unités par milliseconde
 const TIRS_OFFERTS = 5;
-const OBJECTIFS = { vider: 'Videz le plateau', liberer: 'Libérez tous les poussins' };
+const OBJECTIFS = { vider: 'Videz le plateau', liberer: 'Libérez les poussins' };
+const BONUS = {
+  bombe: { nom: 'Bombe', prix: 3, aide: 'Elle fait sauter tout ce qui l’entoure.' },
+  arc: { nom: 'Arc-en-ciel', prix: 3, aide: 'Elle prend la couleur du plus grand groupe touché.' },
+  feu: { nom: 'Boule de feu', prix: 4, aide: 'Elle traverse tout jusqu’en haut.' },
+};
+const ETOILE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6l2.8 6 6.5.7-4.9 4.4 1.4 6.4L12 16.9 6.2 20.1l1.4-6.4L2.7 9.3l6.5-.7z"/></svg>';
 
 let racine = null;
 let options = {};
 let S = null; // partie en cours (sauvegardée)
-let N = null; // niveau (plateau de départ, tirs, seuils)
-let profil = null; // { niveauMax, etoiles: {n: meilleures} } en partie libre
-let toile = null, ctx = null, echelle = 20, dpr = 1;
+let profil = null; // { niveauMax, etoiles: {n}, scores: {n}, symboles }
+let toile = null, ctx = null, echelle = 20, dpr = 1, fond = null;
 let enCours = false; // une bulle vole ou des effets se jouent
-let visee = null; // { angle } pendant que le doigt est posé
-let conseil = null; // { angle, jusqua }
-let effets = []; // particules, chutes, textes
-let volante = null; // { points, i, x, y, b }
+let visee = null;
+let conseil = null;
+let effets = [];
+let volante = null;
 let anim = null, dernier = 0;
-let prochain = null; // niveau suivant préparé à l'avance
+let prochain = null;
+let dejaFabrique = null; // le dernier niveau fabriqué, pour rejouer sans attendre
 let surRedim = null;
 
 // ---------- Hasard reproductible (pour qu'« Annuler » redonne les mêmes bulles) ----------
@@ -55,21 +64,22 @@ function nouvelleCouleur() {
 }
 
 // ---------- Sauvegarde ----------
-const cleProfil = () => 'bulles';
 const clePartie = () => (options.defi ? `bulles.defi.${options.defi.id}` : 'bulles.partie');
 function charger() {
-  profil = lire(cleProfil(), null) || { niveauMax: 1, etoiles: {} };
+  profil = { niveauMax: 1, etoiles: {}, scores: {}, symboles: true, ...lire('bulles', {}) };
+  profil.scores ||= {};
+  reglerSymboles(profil.symboles !== false);
   const p = lire(clePartie(), null);
-  S = p && p.plateau ? p : null;
+  S = p && p.plateau && !p.fini && p.paliers ? p : null; // (une partie de l'ancienne version est ignorée)
 }
-const sauver = () => { ecrire(cleProfil(), profil); if (S) ecrire(clePartie(), S); };
+const sauver = () => { ecrire('bulles', profil); if (S) ecrire(clePartie(), S); };
 const dire = (t) => { const el = $('#bl-status', racine); if (el) el.innerHTML = t || ''; };
+const numeroDuDefi = () => niveauPourDefi(options.defi.niveau, options.defi.numero);
 
 // ---------- Niveaux ----------
 
-const numeroDuDefi = () => niveauPourDefi(options.defi.niveau, options.defi.numero);
-
 function preparer(n) {
+  if (dejaFabrique?.n === n) return Promise.resolve(dejaFabrique.niveau);
   if (prochain?.n === n) return prochain.promesse;
   const promesse = usine.calculer({ genre: 'niveau', n }).then((r) => r.niveau);
   prochain = { n, promesse };
@@ -77,20 +87,21 @@ function preparer(n) {
 }
 
 async function commencer(n) {
+  fermerPanneaux();
   enCours = true;
   effets = [];
   volante = null;
-  dire('Je prépare le niveau…');
+  dire('');
   $('#bl-chargement', racine).hidden = false;
   const niveau = await preparer(n);
-  prochain = null;
+  if (prochain?.n === n) prochain = null;
+  dejaFabrique = { n, niveau };
   if (!racine) return;
   $('#bl-chargement', racine).hidden = true;
-  N = niveau;
   S = {
-    n, plateau: cloner(niveau.plateau), objectif: niveau.objectif, tirs: niveau.tirs, parfait: niveau.parfait, bien: niveau.bien,
-    utilises: 0, score: 0, jauge: 0, bonus: 0, offerts: false, graine: (n * 2654435761) >>> 0, historique: [],
-    indices: 0, annulations: 0, poussinsDepart: nbPoussins(niveau.plateau),
+    n, plateau: cloner(niveau.plateau), objectif: niveau.objectif, tirs: niveau.tirs, paliers: niveau.paliers,
+    utilises: 0, score: 0, jauge: 0, bonus: 0, serie: 0, offerts: false, graine: (n * 2654435761) >>> 0, historique: [],
+    indices: 0, annulations: 0, poussinsDepart: nbPoussins(niveau.plateau), reserve: null,
   };
   S.courante = nouvelleCouleur();
   S.suivante = nouvelleCouleur();
@@ -99,13 +110,8 @@ async function commencer(n) {
   dessinerHud();
   dessiner();
   if (!options.defi) preparer(n + 1); // le suivant se prépare pendant qu'on joue
-  const premier = n === 1 && !options.defi;
-  await demander({
-    titre: options.defi ? `Niveau ${options.defi.numero} de l’Aventure` : `Niveau ${n}`,
-    texte: `${OBJECTIFS[S.objectif]}${S.objectif === 'liberer' ? ` (${pluriel(S.poussinsDepart, 'poussin')})` : ''} avec ${pluriel(S.tirs, 'bulle')}.`
-      + (premier ? '\n\nPosez le doigt là où vous voulez envoyer la bulle : la ligne montre son chemin. Levez le doigt pour tirer. Trois bulles de la même couleur éclatent !' : ''),
-    oui: 'C’est parti !',
-  });
+  const premier = n === 1 && !options.defi && !profil.scores[1];
+  await panneauDebut(premier);
   dire(premier ? 'Posez le doigt sur le jeu pour viser.' : '');
 }
 
@@ -118,86 +124,79 @@ function dimensionner() {
   const paysage = matchMedia('(orientation: landscape) and (max-height: 560px)').matches;
   let largeur = Math.min(zone.clientWidth || 340, 560);
   if (paysage) largeur = Math.min(largeur, ((window.innerHeight - 24) * LARGEUR) / HAUTEUR);
-  else largeur = Math.min(largeur, ((window.innerHeight * 0.72) * LARGEUR) / HAUTEUR);
+  else largeur = Math.min(largeur, ((window.innerHeight * 0.66) * LARGEUR) / HAUTEUR);
   echelle = largeur / LARGEUR;
   dpr = Math.min(2, window.devicePixelRatio || 1);
   toile.style.width = `${largeur}px`;
   toile.style.height = `${HAUTEUR * echelle}px`;
   toile.width = Math.round(largeur * dpr);
   toile.height = Math.round(HAUTEUR * echelle * dpr);
-}
-
-function dessinerFond() {
-  const W = toile.width / dpr, H = toile.height / dpr;
-  const sombre = matchMedia('(prefers-color-scheme: dark)').matches;
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, sombre ? '#1B2B4A' : '#BFE3FF');
-  g.addColorStop(1, sombre ? '#2A1E46' : '#F3E3FF');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
-  // ligne à ne pas dépasser
-  const yLimite = px(1 + (RANGEES_MAX - 1) * SQ - 1);
-  ctx.setLineDash([px(0.5), px(0.5)]);
-  ctx.strokeStyle = sombre ? 'rgba(255, 255, 255, .25)' : 'rgba(30, 40, 80, .2)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(0, yLimite);
-  ctx.lineTo(W, yLimite);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  fond = fabriquerFond(largeur, HAUTEUR * echelle, dpr);
 }
 
 function dessinerLanceur(t) {
   const x = px(DEPART.x), y = px(DEPART.y);
-  // socle
+  // socle en sucre d'orge
   ctx.beginPath();
-  ctx.ellipse(x, y + px(1.2), px(2.4), px(0.7), 0, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(29, 92, 72, .35)';
+  ctx.ellipse(x, y + px(1.25), px(2.6), px(0.75), 0, 0, Math.PI * 2);
+  const g = ctx.createLinearGradient(x - px(2.6), 0, x + px(2.6), 0);
+  g.addColorStop(0, '#FFD84A'); g.addColorStop(0.5, '#FFF2A8'); g.addColorStop(1, '#F2A81D');
+  ctx.fillStyle = g;
   ctx.fill();
+  ctx.strokeStyle = '#B86E00';
+  ctx.lineWidth = 2;
+  ctx.stroke();
   // flèche de visée
   const angle = visee?.angle ?? Math.PI / 2;
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(-angle + Math.PI / 2);
-  ctx.fillStyle = '#1D5C48';
+  ctx.fillStyle = '#FFF';
+  ctx.strokeStyle = '#B86E00';
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(-px(0.55), -px(1.1)); ctx.lineTo(0, -px(2.3)); ctx.lineTo(px(0.55), -px(1.1));
+  ctx.moveTo(-px(0.6), -px(1.15)); ctx.lineTo(0, -px(2.4)); ctx.lineTo(px(0.6), -px(1.15));
   ctx.closePath();
   ctx.fill();
+  ctx.stroke();
   ctx.restore();
-  // bulle prête (avec un halo si c'est une bulle spéciale)
   if (S && !volante) {
     if (S.courante.tir) {
       ctx.beginPath();
-      ctx.arc(x, y, px(1.4 + 0.15 * Math.sin(t / 200)), 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(242, 183, 5, .35)';
+      ctx.arc(x, y, px(1.45 + 0.15 * Math.sin(t / 200)), 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 230, 90, .45)';
       ctx.fill();
     }
-    dessinerBulle(ctx, x, y, px(1), S.courante, t);
+    dessinerBulle(ctx, x, y, px(1), S.courante, t, dpr);
   }
-  // bulle suivante, à gauche, avec ses flèches d'échange
   if (S) {
+    // bulle suivante, à gauche, et la petite flèche d'échange
     const sx = px(DEPART.x - 5), sy = px(DEPART.y + 0.6);
-    dessinerBulle(ctx, sx, sy, px(0.75), S.suivante, t);
-    ctx.strokeStyle = 'rgba(29, 92, 72, .7)';
-    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(sx + px(2.4), sy - px(0.2), px(0.8), Math.PI * 1.1, Math.PI * 1.9);
+    ctx.arc(sx, sy, px(0.95), 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, .25)';
+    ctx.fill();
+    dessinerBulle(ctx, sx, sy, px(0.75), S.suivante, t, dpr);
+    ctx.strokeStyle = 'rgba(255, 255, 255, .85)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(sx + px(2.3), sy - px(0.2), px(0.8), Math.PI * 1.1, Math.PI * 1.9);
     ctx.stroke();
   }
 }
 
-function dessinerGuide(angle, t, couleur = 'rgba(255,255,255,.9)') {
-  const { points: pts, cible } = trajectoire(S.plateau, angle);
+function dessinerGuide(angle, t, couleur = 'rgba(255,255,255,.95)') {
+  const feu = S.courante.tir === 'feu' && !conseil;
+  const { points: pts, cible } = trajectoire(S.plateau, angle, feu);
   let reste = 0;
-  ctx.fillStyle = couleur;
+  ctx.fillStyle = feu ? 'rgba(255, 160, 40, .95)' : couleur;
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1], b = pts[i];
     const long = Math.hypot(b.x - a.x, b.y - a.y);
     for (let d = reste; d < long; d += 1.1) {
       const f = d / long;
       ctx.beginPath();
-      ctx.arc(px(a.x + (b.x - a.x) * f), px(a.y + (b.y - a.y) * f), px(0.18), 0, Math.PI * 2);
+      ctx.arc(px(a.x + (b.x - a.x) * f), px(a.y + (b.y - a.y) * f), px(0.2), 0, Math.PI * 2);
       ctx.fill();
     }
     reste = (reste + 1.1 - (long % 1.1)) % 1.1;
@@ -216,16 +215,28 @@ function dessinerGuide(angle, t, couleur = 'rgba(255,255,255,.9)') {
 }
 
 function dessiner(t = performance.now()) {
-  if (!ctx || !S) return;
+  if (!ctx) return;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (fond) ctx.drawImage(fond, 0, 0);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  dessinerFond();
+  if (!S) return;
+  // ligne à ne pas dépasser
+  const yLimite = px(1 + (RANGEES_MAX - 1) * SQ - 1);
+  ctx.setLineDash([px(0.5), px(0.5)]);
+  ctx.strokeStyle = 'rgba(255, 255, 255, .35)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, yLimite);
+  ctx.lineTo(px(LARGEUR), yLimite);
+  ctx.stroke();
+  ctx.setLineDash([]);
   for (const [r, c, b] of cases(S.plateau)) {
     const q = centre(r, c);
-    dessinerBulle(ctx, px(q.x), px(q.y), px(1), b, t);
+    dessinerBulle(ctx, px(q.x), px(q.y), px(1), b, t, dpr);
   }
-  if (conseil && t < conseil.jusqua) dessinerGuide(conseil.angle, t, 'rgba(242, 183, 5, .95)');
+  if (conseil && t < conseil.jusqua) dessinerGuide(conseil.angle, t, 'rgba(255, 220, 60, .95)');
   if (visee && !volante) dessinerGuide(visee.angle, t);
-  if (volante) dessinerBulle(ctx, px(volante.x), px(volante.y), px(1), volante.b, t);
+  if (volante) dessinerBulle(ctx, px(volante.x), px(volante.y), px(1), volante.b, t, dpr);
   dessinerLanceur(t);
   for (const e of effets) e.dessiner(t);
 }
@@ -241,7 +252,8 @@ function demarrer() {
     if (volante) avancer(dt);
     effets = effets.filter((e) => e.avancer(dt, t));
     dessiner(t);
-    const besoin = volante || effets.length || visee || (conseil && t < conseil.jusqua) || S?.courante.tir;
+    const besoin = volante || effets.length || visee || (conseil && t < conseil.jusqua) || S?.courante.tir
+      || (S && [...cases(S.plateau)].some(([, , b]) => b.type === 'etoile' || b.type === 'bombe'));
     anim = besoin && racine ? requestAnimationFrame(boucle) : null;
   };
   anim = requestAnimationFrame(boucle);
@@ -249,19 +261,22 @@ function demarrer() {
 
 // ---------- Effets ----------
 
-function particules(x, y, couleur, nb = 8) {
+function particules(x, y, couleur, nb = 9, force = 1) {
   if (mouvementReduit()) return;
   for (let i = 0; i < nb; i++) {
-    const a = (i / nb) * Math.PI * 2 + Math.random() * 0.5, v = 0.006 + Math.random() * 0.008;
-    let px0 = x, py0 = y, vx = Math.cos(a) * v, vy = Math.sin(a) * v, vie = 500 + Math.random() * 250;
-    const total = vie, taille = 0.18 + Math.random() * 0.22;
+    const a = (i / nb) * Math.PI * 2 + Math.random() * 0.5, v = (0.006 + Math.random() * 0.009) * force;
+    let px0 = x, py0 = y, vx = Math.cos(a) * v, vy = Math.sin(a) * v, vie = 500 + Math.random() * 300;
+    const total = vie, taille = 0.18 + Math.random() * 0.25, etoile = i % 3 === 0;
     effets.push({
       avancer(dt) { px0 += vx * dt; py0 += vy * dt; vy += 0.00002 * dt; vie -= dt; return vie > 0; },
       dessiner() {
         ctx.globalAlpha = Math.max(0, vie / total);
+        ctx.fillStyle = etoile ? '#FFF6B0' : couleur;
         ctx.beginPath();
-        ctx.arc(px(px0), px(py0), px(taille), 0, Math.PI * 2);
-        ctx.fillStyle = couleur;
+        if (etoile) {
+          const s = px(taille * 1.4);
+          ctx.moveTo(px(px0), px(py0) - s); ctx.lineTo(px(px0) + s * 0.3, px(py0)); ctx.lineTo(px(px0), px(py0) + s); ctx.lineTo(px(px0) - s * 0.3, px(py0));
+        } else ctx.arc(px(px0), px(py0), px(taille), 0, Math.PI * 2);
         ctx.fill();
         ctx.globalAlpha = 1;
       },
@@ -276,14 +291,14 @@ function eclater(x, y, b, delai) {
     avancer(dt) {
       const avant = t0;
       t0 += dt;
-      if (avant < 0 && t0 >= 0) particules(x, y, PALETTE[b.k]?.base || '#9AA0A6');
+      if (avant < 0 && t0 >= 0) particules(x, y, PALETTE[b.k]?.base || '#C9C5D9');
       return t0 < duree;
     },
     dessiner(t) {
-      if (t0 < 0) { dessinerBulle(ctx, px(x), px(y), px(1), b, t); return; }
+      if (t0 < 0) { dessinerBulle(ctx, px(x), px(y), px(1), b, t, dpr); return; }
       const f = t0 / duree;
       ctx.globalAlpha = 1 - f;
-      dessinerBulle(ctx, px(x), px(y), px(1 + f * 0.5), b, t);
+      dessinerBulle(ctx, px(x), px(y), px(1 + f * 0.55), b, t, dpr);
       ctx.globalAlpha = 1;
     },
   });
@@ -296,10 +311,10 @@ function tomber(x, y, b, delai) {
       t0 += dt;
       if (t0 < 0) return true;
       vy += 0.00006 * dt; xx += vx * dt; yy += vy * dt;
-      if (yy > HAUTEUR + 2) { particules(xx, HAUTEUR - 0.5, PALETTE[b.k]?.base || '#9AA0A6', 4); return false; }
+      if (yy > HAUTEUR + 2) { particules(xx, HAUTEUR - 0.5, PALETTE[b.k]?.base || '#C9C5D9', 4); return false; }
       return true;
     },
-    dessiner(t) { dessinerBulle(ctx, px(xx), px(yy), px(1), b, t); },
+    dessiner(t) { dessinerBulle(ctx, px(xx), px(yy), px(1), b, t, dpr); },
   });
 }
 
@@ -308,12 +323,12 @@ function texteVolant(x, y, texte, couleur = '#ffffff', taille = 1.3) {
   effets.push({
     avancer(dt) { t0 += dt; return t0 < 1100; },
     dessiner() {
-      const f = t0 / 1100;
+      const f = t0 / 1100, echelleTexte = f < 0.15 ? 0.6 + (f / 0.15) * 0.5 : 1.1 - Math.min(0.1, f * 0.1);
       ctx.globalAlpha = 1 - f * f;
-      ctx.font = `700 ${px(taille)}px "Atkinson Hyperlegible", sans-serif`;
+      ctx.font = `700 ${px(taille * echelleTexte)}px "Atkinson Hyperlegible", sans-serif`;
       ctx.textAlign = 'center';
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = 'rgba(20, 30, 50, .65)';
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = '#4A1E7A';
       ctx.strokeText(texte, px(x), px(y - f * 2.5));
       ctx.fillStyle = couleur;
       ctx.fillText(texte, px(x), px(y - f * 2.5));
@@ -322,7 +337,7 @@ function texteVolant(x, y, texte, couleur = '#ffffff', taille = 1.3) {
   });
 }
 
-function onde(x, y) {
+function onde(x, y, couleur = '255, 190, 60') {
   let t0 = 0;
   effets.push({
     avancer(dt) { t0 += dt; return t0 < 450; },
@@ -330,9 +345,28 @@ function onde(x, y) {
       const f = t0 / 450;
       ctx.beginPath();
       ctx.arc(px(x), px(y), px(1 + f * 4), 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(255, 190, 60, ${1 - f})`;
+      ctx.strokeStyle = `rgba(${couleur}, ${1 - f})`;
       ctx.lineWidth = px(0.5) * (1 - f);
       ctx.stroke();
+    },
+  });
+  secouer();
+}
+
+function eclair(rangee) {
+  let t0 = 0;
+  const y = 1 + rangee * SQ;
+  effets.push({
+    avancer(dt) { t0 += dt; return t0 < 500; },
+    dessiner() {
+      const f = t0 / 500;
+      ctx.globalAlpha = 1 - f;
+      ctx.strokeStyle = '#FFF27A';
+      ctx.lineWidth = px(0.35);
+      ctx.beginPath();
+      for (let x = 0; x <= LARGEUR; x += 1) ctx.lineTo(px(x), px(y + (Math.random() - 0.5) * 0.9));
+      ctx.stroke();
+      ctx.globalAlpha = 1;
     },
   });
   secouer();
@@ -353,9 +387,9 @@ function poussinLibere(x, y, delai) {
 
 function confettis() {
   if (mouvementReduit()) return;
-  for (let i = 0; i < 60; i++) {
-    let x = Math.random() * LARGEUR, y = -Math.random() * 6, vy = 0.006 + Math.random() * 0.01, rot = Math.random() * 6;
-    const couleur = PALETTE[i % PALETTE.length].base, vr = (Math.random() - 0.5) * 0.02;
+  for (let i = 0; i < 70; i++) {
+    let x = Math.random() * LARGEUR, y = -Math.random() * 6, rot = Math.random() * 6;
+    const vy = 0.006 + Math.random() * 0.01, couleur = PALETTE[i % PALETTE.length].base, vr = (Math.random() - 0.5) * 0.02;
     effets.push({
       avancer(dt) { y += vy * dt; x += Math.sin(y) * 0.02; rot += vr * dt; return y < HAUTEUR + 1; },
       dessiner() {
@@ -370,14 +404,36 @@ function confettis() {
   }
 }
 
+/** Une bulle restante s'envole du lanceur et éclate en rapportant le bonus de fin. */
+function bulleBonus(delai) {
+  let t0 = -delai, y = DEPART.y;
+  const x = DEPART.x + (Math.random() - 0.5) * 6, b = { k: Math.floor(Math.random() * 6), type: 'bulle' };
+  return new Promise((fini) => {
+    effets.push({
+      avancer(dt) {
+        t0 += dt;
+        if (t0 < 0) return true;
+        y -= dt * 0.03;
+        if (y < 8 + Math.random()) {
+          particules(x, y, PALETTE[b.k].base, 8, 1.2);
+          texteVolant(x, y, `+${BONUS_RESTE}`, '#FFE14D', 1.1);
+          fini();
+          return false;
+        }
+        return true;
+      },
+      dessiner(t) { if (t0 >= 0) dessinerBulle(ctx, px(x), px(y), px(0.85), b, t, dpr); },
+    });
+  });
+}
+
 // ---------- Tir ----------
 
 function angleVers(ev) {
   const r = toile.getBoundingClientRect();
   const x = (ev.clientX - r.left) / echelle, y = (ev.clientY - r.top) / echelle;
   if (y > DEPART.y - 0.8) return null; // trop bas : pas de tir
-  const a = Math.atan2(DEPART.y - y, x - DEPART.x);
-  return Math.min(ANGLE_MAX, Math.max(ANGLE_MIN, a));
+  return Math.min(ANGLE_MAX, Math.max(ANGLE_MIN, Math.atan2(DEPART.y - y, x - DEPART.x)));
 }
 function surSuivante(ev) {
   const r = toile.getBoundingClientRect();
@@ -387,21 +443,21 @@ function surSuivante(ev) {
 
 function tirer(angle) {
   if (enCours || !S) return;
-  const { points: pts, cible } = trajectoire(S.plateau, angle);
-  if (!cible) return;
-  // on garde de quoi annuler ce tir
+  const feu = S.courante.tir === 'feu';
+  const { points: pts, cible, touchees } = trajectoire(S.plateau, angle, feu);
+  if (!cible && !feu) return;
   S.historique.push(JSON.stringify({ ...S, historique: undefined }));
   if (S.historique.length > 8) S.historique.shift();
   enCours = true;
   conseil = null;
   visee = null;
-  volante = { points: pts, i: 1, x: pts[0].x, y: pts[0].y, b: S.courante, cible };
+  volante = { points: pts, i: 1, x: pts[0].x, y: pts[0].y, b: S.courante, cible, touchees };
   dire('');
   demarrer();
 }
 
 function avancer(dt) {
-  let reste = dt * VITESSE;
+  let reste = dt * VITESSE * (volante.b.tir === 'feu' ? 1.2 : 1);
   while (reste > 0 && volante) {
     const but = volante.points[volante.i];
     const d = Math.hypot(but.x - volante.x, but.y - volante.y);
@@ -413,19 +469,21 @@ function avancer(dt) {
       volante.y += ((but.y - volante.y) / d) * reste;
       reste = 0;
     }
+    if (volante?.b.tir === 'feu') particules(volante.x, volante.y + 0.6, '#FF8A1F', 1, 0.4);
   }
 }
 
 async function atterrir() {
-  const { cible, b } = volante;
+  const { cible, b, touchees } = volante;
   volante = null;
-  const ev = resoudre(S.plateau, cible, b);
-  S.utilises++;
-  // éclatements, de proche en proche
-  const c0 = centre(cible.r, cible.c);
+  const ev = resoudre(S.plateau, cible, b, touchees);
+  const estBonus = Boolean(b.tir) && S.bonusEnCours;
+  if (!estBonus) S.utilises++;
+  S.bonusEnCours = false;
+  const c0 = cible ? centre(cible.r, cible.c) : { x: LARGEUR / 2, y: 3 };
   ev.eclatees.forEach(({ r, c, b: v }) => {
     const q = centre(r, c);
-    eclater(q.x, q.y, v, Math.hypot(q.x - c0.x, q.y - c0.y) * 25);
+    eclater(q.x, q.y, v, Math.hypot(q.x - c0.x, q.y - c0.y) * 22);
     if (v.poussin) poussinLibere(q.x, q.y, 200);
   });
   ev.tombees.forEach(({ r, c, b: v }, i) => {
@@ -434,77 +492,95 @@ async function atterrir() {
     if (v.poussin) poussinLibere(q.x, q.y, 300);
   });
   ev.explosions.forEach(({ r, c }) => { const q = centre(r, c); onde(q.x, q.y); });
+  ev.etoiles.forEach(({ r, c }) => { const q = centre(r, c); onde(q.x, q.y, '255, 255, 255'); texteVolant(q.x, q.y, 'Toute la couleur !', '#FFF6B0', 1.2); });
+  ev.eclairs.forEach(({ r }) => eclair(r));
   ev.glaces.forEach(({ r, c }) => { const q = centre(r, c); particules(q.x, q.y, '#D6F3FF', 6); });
-  const combo = ev.tombees.length >= 3 ? 1 : 0;
-  const gain = points(ev, combo);
+  ev.reveles.forEach(({ r, c }) => { const q = centre(r, c); particules(q.x, q.y, '#FFFFFF', 6); });
+  // série : chaque tir réussi d'affilée rapporte un peu plus
+  S.serie = reussite(ev) ? (S.serie || 0) + 1 : 0;
+  const gain = points(ev, S.serie);
   S.score += gain;
-  if (gain) texteVolant(c0.x, c0.y, `+${gain}`, ev.tombees.length >= 5 ? '#FFD84A' : '#ffffff', ev.tombees.length >= 5 ? 1.7 : 1.3);
-  if (ev.tombees.length >= 5) texteVolant(LARGEUR / 2, 10, 'Magnifique !', '#FFD84A', 2);
+  if (gain) texteVolant(c0.x, c0.y, `+${gain}`, ev.tombees.length >= 5 ? '#FFE14D' : '#ffffff', ev.tombees.length >= 5 ? 1.7 : 1.3);
+  if (multiplicateur(S.serie) > 1) texteVolant(LARGEUR / 2, 13.5, `Série × ${multiplicateur(S.serie).toLocaleString('fr-FR')}`, '#9BFFB0', 1.4);
+  if (ev.tombees.length >= 5) texteVolant(LARGEUR / 2, 10, 'Délicieux !', '#FFE14D', 2);
   else if (ev.eclatees.length >= 6) texteVolant(LARGEUR / 2, 10, 'Bravo !', '#ffffff', 1.8);
   if (ev.poussins) texteVolant(c0.x, c0.y - 2, ev.poussins > 1 ? `${ev.poussins} poussins libérés !` : 'Un poussin libéré !', '#FFE37A', 1.3);
-  // jauge de bonus : une bulle spéciale arrive quand elle est pleine
+  if (ev.tirsBonus) { S.tirs += ev.tirsBonus; texteVolant(DEPART.x + 4, DEPART.y - 2, `+${ev.tirsBonus} bulles !`, '#9BFFB0', 1.3); }
+  // jauge : une bulle spéciale offerte quand elle est pleine
   S.jauge += charge(ev);
   let bonusPret = false;
   if (S.jauge >= SEUIL_BONUS) { S.jauge = 0; bonusPret = true; }
-  S.courante = S.suivante;
-  S.suivante = nouvelleCouleur();
+  if (S.reserve) { S.courante = S.reserve; S.reserve = null; }
+  else { S.courante = S.suivante; S.suivante = nouvelleCouleur(); }
   if (bonusPret) {
-    S.suivante = S.courante;
+    S.reserve = S.courante;
     S.courante = { tir: S.bonus++ % 2 ? 'arc' : 'bombe' };
-    texteVolant(DEPART.x, DEPART.y - 3, S.courante.tir === 'bombe' ? 'Une bombe !' : 'Une bulle arc-en-ciel !', '#FFD84A', 1.3);
+    S.bonusEnCours = true;
+    texteVolant(DEPART.x, DEPART.y - 3, S.courante.tir === 'bombe' ? 'Une bombe offerte !' : 'Un arc-en-ciel offert !', '#FFE14D', 1.3);
   }
   // une couleur qui n'existe plus sur le plateau est remplacée
   if (S.courante.k !== undefined && !couleursPresentes(S.plateau).includes(S.courante.k)) S.courante = nouvelleCouleur();
   if (S.suivante.k !== undefined && !couleursPresentes(S.plateau).includes(S.suivante.k)) S.suivante = nouvelleCouleur();
+  if (S.reserve?.k !== undefined && !couleursPresentes(S.plateau).includes(S.reserve.k)) S.reserve = nouvelleCouleur();
   sauver();
   dessinerHud();
   demarrer();
   enCours = false;
-  if (reussi(S.plateau, S.objectif)) return victoire(ev);
-  if (debordement(S.plateau)) return defaite('Les bulles sont descendues trop bas.');
+  if (reussi(S.plateau, S.objectif)) return victoire();
+  if (debordement(S.plateau)) return defaite('Les bonbons sont descendus trop bas.');
   if (S.utilises >= S.tirs) return plusDeTirs();
-  if (!ev.eclatees.length && !ev.tombees.length && S.tirs - S.utilises <= 3) dire(`Attention : plus que ${pluriel(S.tirs - S.utilises, 'bulle')} !`);
+  if (!reussite(ev) && S.tirs - S.utilises <= 3) dire(`Attention : plus que ${pluriel(S.tirs - S.utilises, 'bulle')} !`);
 }
 
 async function victoire() {
   enCours = true;
-  // les bulles restantes (pierres…) tombent pour le plaisir des yeux
+  // les bonbons restants (pierres…) tombent, puis chaque bulle non utilisée rapporte un bonus
   for (const [r, c, b] of [...cases(S.plateau)]) { const q = centre(r, c); tomber(q.x, q.y, b, Math.random() * 300); S.plateau[r][c] = null; }
+  demarrer();
+  const restantes = Math.max(0, S.tirs - S.utilises);
+  if (restantes) {
+    texteVolant(LARGEUR / 2, 11, 'Bonus de fin !', '#FFE14D', 1.8);
+    const montrees = Math.min(restantes, 12);
+    const vols = [];
+    for (let i = 0; i < montrees; i++) {
+      vols.push(bulleBonus(300 + i * (mouvementReduit() ? 0 : 160)).then(() => {
+        S.score += BONUS_RESTE * (i === montrees - 1 ? restantes - montrees + 1 : 1);
+        dessinerHud();
+      }));
+    }
+    demarrer();
+    await Promise.all(vols);
+  }
   confettis();
   demarrer();
-  const etoiles = etoilesNiveau(S, S.utilises, S.offerts);
-  const restantes = S.tirs - S.utilises;
+  const etoiles = etoilesNiveau(S, S.score, S.offerts);
+  const ancienMeilleur = profil.scores[S.n] || 0;
   if (!options.defi) {
     profil.etoiles[S.n] = Math.max(profil.etoiles[S.n] || 0, etoiles);
+    profil.scores[S.n] = Math.max(ancienMeilleur, S.score);
     profil.niveauMax = Math.max(profil.niveauMax, S.n + 1);
   }
-  const n = S.n;
-  const details = { indices: S.indices, annulations: S.annulations, tirsRestants: restantes, score: S.score, etoiles };
-  S = { ...S, fini: true };
+  const fin = { ...S, fini: true };
+  S = fin;
   sauver();
   ecrire(clePartie(), null);
-  await new Promise((r) => setTimeout(r, mouvementReduit() ? 100 : 1400));
-  const choix = await finirPartie({
+  const recompense = recompenser({
     jeu: 'bulles',
     gagne: true,
     // en partie libre, les étoiles gagnées suivent la réussite du niveau (1 à 3)
     difficulte: ['facile', 'moyen', 'difficile'][etoiles - 1],
     defi: options.defi,
-    titre: etoiles === 3 ? 'Parfait !' : 'Niveau réussi !',
-    texte: `${pluriel(S.utilises, 'bulle tirée', 'bulles tirées')}, ${S.score} points.${restantes > 0 ? ` Il vous restait ${pluriel(restantes, 'bulle')}.` : ''}`,
-    libelleRejouer: options.defi ? undefined : 'Niveau suivant',
-    details,
+    details: { indices: fin.indices, annulations: fin.annulations, tirsRestants: restantes, score: fin.score, etoiles },
   });
-  if (choix === 'rejouer') commencer(options.defi ? numeroDuDefi() : n + 1);
-  else if (choix === 'carte') revenir('niveaux');
-  else { S = null; dessinerHud(); }
+  await attendre(900);
+  panneauFin({ gagne: true, etoiles: recompense.niveau ? recompense.niveau.etoilesNiveau : etoiles, score: fin.score, meilleur: Math.max(ancienMeilleur, fin.score), nouveauRecord: fin.score > ancienMeilleur && ancienMeilleur > 0, recompense });
 }
 
 async function plusDeTirs() {
   if (!S.offerts) {
     const encore = await demander({
       titre: 'Plus de bulles !',
-      texte: `Il reste encore ${couleursPresentes(S.plateau).length ? 'des bulles à faire éclater' : 'des poussins à libérer'}. Voulez-vous ${TIRS_OFFERTS} bulles de plus ? (C’est offert, une fois par niveau.)`,
+      texte: `Il reste encore ${S.objectif === 'liberer' ? 'des poussins à libérer' : 'des bonbons'}. Voulez-vous ${TIRS_OFFERTS} bulles de plus ? (C’est offert, une fois par niveau.)`,
       oui: `Oui, ${TIRS_OFFERTS} bulles de plus`,
       non: 'Non, j’arrête',
     });
@@ -519,32 +595,140 @@ async function plusDeTirs() {
   defaite('Toutes les bulles ont été tirées.');
 }
 
-async function defaite(raison) {
+function defaite(raison) {
   enCours = true;
   ecrire(clePartie(), null);
-  const n = S.n;
-  const choix = await finirPartie({
-    jeu: 'bulles',
-    gagne: false,
-    difficulte: 'facile',
-    defi: options.defi,
-    titre: 'Pas cette fois',
-    texte: `${raison} On recommence ?`,
-    details: { indices: S.indices, annulations: S.annulations, tirsRestants: 0 },
+  const fin = { ...S, fini: true };
+  S = fin;
+  const recompense = recompenser({ jeu: 'bulles', gagne: false, difficulte: 'facile', defi: options.defi, details: { indices: fin.indices, annulations: fin.annulations, tirsRestants: 0 } });
+  panneauFin({ gagne: false, etoiles: 0, score: fin.score, meilleur: profil.scores[fin.n] || 0, raison, recompense });
+}
+
+// ---------- Panneaux « bonbon » : début, fin, pause ----------
+
+function fermerPanneaux() {
+  document.querySelectorAll('.bl-panneau').forEach((p) => p.remove());
+}
+
+function panneau(html, classe = '') {
+  fermerPanneaux();
+  const el = document.createElement('div');
+  el.className = `sheet temp bl-panneau ${classe}`;
+  el.innerHTML = `<div class="bl-rayons" aria-hidden="true"></div><div class="bl-boite" role="dialog" aria-modal="true">${html}</div>`;
+  document.body.append(el);
+  animer(el.querySelector('.bl-boite'), [{ transform: 'scale(.6)', opacity: 0 }, { transform: 'scale(1.05)', opacity: 1, offset: 0.7 }, { transform: 'scale(1)', opacity: 1 }], { duration: 450, easing: COURBE_REBOND });
+  return el;
+}
+
+function choixPanneau(el) {
+  return new Promise((ok) => el.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-r]');
+    if (!b) return;
+    el.remove();
+    ok(b.dataset.r);
+  }));
+}
+
+async function panneauDebut(premier) {
+  const titre = options.defi ? `Aventure · niveau ${options.defi.numero}` : `Niveau ${S.n}`;
+  const objectif = `${OBJECTIFS[S.objectif]}${S.objectif === 'liberer' ? ` (${pluriel(S.poussinsDepart, 'poussin')})` : ''}`;
+  const speciales = new Set([...cases(S.plateau)].map(([, , b]) => (b.type !== 'bulle' ? b.type : b.k2 !== undefined ? 'bicolore' : b.mystere ? 'mystere' : b.glace ? 'glace' : b.plus ? 'plus' : '')).filter(Boolean));
+  const AIDE = {
+    etoile: 'Étoile : touchez-la et toute la couleur disparaît.', eclair: 'Éclair : quand il saute, sa rangée entière disparaît.',
+    bombe: 'Bombe : elle explose quand ses voisines éclatent.', pierre: 'Pierre : elle n’éclate pas, faites-la tomber.',
+    glace: 'Glace : faites éclater une voisine pour la libérer.', mystere: 'Mystère : sa couleur apparaît quand une voisine éclate.',
+    bicolore: 'Bicolore : elle compte pour ses deux couleurs.', plus: '« +3 » : trois bulles de plus quand elle éclate.',
+  };
+  const el = panneau(`
+    <h3 class="bl-titre-panneau">${titre}</h3>
+    <p class="bl-objectif-panneau">${objectif}</p>
+    <p class="bl-bulles-panneau"><b>${S.tirs}</b> bulles</p>
+    ${[...speciales].filter((k) => AIDE[k]).map((k) => `<p class="bl-aide">${AIDE[k]}</p>`).join('')}
+    ${premier ? '<p class="bl-aide">Posez le doigt là où vous voulez envoyer la bulle : la ligne montre son chemin. Levez le doigt pour tirer. Trois bonbons de la même couleur éclatent !</p>' : ''}
+    <div class="bl-boutons"><button class="bl-rond grand" data-r="go"><span class="ic">▶</span><span>C’est parti !</span></button></div>`);
+  await choixPanneau(el);
+}
+
+function panneauFin({ gagne, etoiles, score, meilleur, nouveauRecord, raison, recompense }) {
+  const etoilesHtml = [0, 1, 2].map((i) => `<span class="bl-grande-etoile ${i < etoiles ? 'on' : ''} e${i}">${ETOILE_SVG}</span>`).join('');
+  const gainEtoiles = recompense?.etoiles || 0;
+  const bonus = recompense?.bonus || [];
+  const titre = !gagne ? 'Presque !' : etoiles === 3 ? 'Parfait !' : etoiles === 2 ? 'Bravo !' : 'Gagné !';
+  const boutons = options.defi
+    ? `<button class="bl-rond" data-r="rejouer"><span class="ic">↻</span><span>Rejouer</span></button>
+       <button class="bl-rond grand" data-r="carte"><span class="ic">▶</span><span>Retour à la carte</span></button>`
+    : gagne
+      ? `<button class="bl-rond" data-r="rejouer"><span class="ic">↻</span><span>Rejouer pour faire mieux</span></button>
+         <button class="bl-rond grand" data-r="suivant"><span class="ic">▶</span><span>Niveau suivant</span></button>
+         <button class="bl-rond" data-r="niveaux"><span class="ic">☰</span><span>Niveaux</span></button>`
+      : `<button class="bl-rond grand" data-r="rejouer"><span class="ic">↻</span><span>Réessayer</span></button>
+         <button class="bl-rond" data-r="niveaux"><span class="ic">☰</span><span>Niveaux</span></button>`;
+  const el = panneau(`
+    <div class="bl-etoiles-panneau">${etoilesHtml}</div>
+    <h3 class="bl-titre-panneau">${titre}</h3>
+    ${raison ? `<p class="bl-objectif-panneau">${raison}</p>` : ''}
+    <p class="bl-label">Votre score</p>
+    <p class="bl-score-panneau" id="bl-compteur">0</p>
+    <p class="bl-detail">${nouveauRecord ? '<b>Nouveau record !</b> · ' : meilleur ? `Meilleur score : ${meilleur} · ` : ''}${gainEtoiles ? `+${gainEtoiles} ★ gagnée${gainEtoiles > 1 ? 's' : ''}` : ''}</p>
+    ${bonus.length ? `<ul class="bl-bonus">${bonus.map((b) => `<li>${b.texte}${b.etoiles ? ` : +${b.etoiles} ★` : ''}</li>`).join('')}</ul>` : ''}
+    <div class="bl-boutons">${boutons}</div>`, gagne ? 'gagne' : 'perdu');
+  // le score défile, les étoiles apparaissent une à une
+  const compteur = el.querySelector('#bl-compteur');
+  if (mouvementReduit()) compteur.textContent = score;
+  else {
+    const debut = performance.now();
+    const duree = Math.min(1600, 400 + score / 4);
+    const tic = (t) => {
+      const f = Math.min(1, (t - debut) / duree);
+      compteur.textContent = Math.round(score * (1 - (1 - f) ** 3));
+      if (f < 1 && document.contains(compteur)) requestAnimationFrame(tic);
+    };
+    requestAnimationFrame(tic);
+    el.querySelectorAll('.bl-grande-etoile.on').forEach((s, i) => {
+      animer(s, [{ transform: 'scale(0) rotate(-90deg)', opacity: 0 }, { transform: 'scale(1.35) rotate(10deg)', opacity: 1, offset: 0.7 }, { transform: 'scale(1) rotate(0)', opacity: 1 }],
+        { duration: 520, delay: 350 + i * 300, easing: COURBE_REBOND, fill: 'backwards' });
+    });
+  }
+  choixPanneau(el).then((r) => {
+    const n = S.n;
+    if (r === 'rejouer') commencer(options.defi ? numeroDuDefi() : n);
+    else if (r === 'suivant') commencer(n + 1);
+    else if (r === 'carte') revenir('niveaux');
+    else if (r === 'niveaux') choisirNiveau(true);
   });
-  if (choix === 'rejouer') commencer(n);
-  else if (choix === 'carte') revenir('niveaux');
-  else { S = null; enCours = false; dessinerHud(); }
+}
+
+async function pause() {
+  if (enCours || !S) return;
+  const el = panneau(`
+    <h3 class="bl-titre-panneau">Pause</h3>
+    <div class="bl-menu">
+      <button class="bl-ligne-menu primaire" data-r="reprendre">Reprendre</button>
+      <button class="bl-ligne-menu" data-r="recommencer">Recommencer le niveau</button>
+      ${options.defi ? '' : '<button class="bl-ligne-menu" data-r="niveaux">Choisir un niveau</button>'}
+      <button class="bl-ligne-menu" data-r="symboles">Symboles sur les bonbons : ${profil.symboles !== false ? 'oui' : 'non'}</button>
+      <button class="bl-ligne-menu" data-r="quitter">Quitter le jeu</button>
+    </div>`, 'pause');
+  const r = await choixPanneau(el);
+  if (r === 'recommencer') {
+    if (await demander({ titre: 'Recommencer ?', texte: 'Le niveau repart de zéro.', oui: 'Oui, recommencer', non: 'Non' })) commencer(S.n);
+  } else if (r === 'niveaux') choisirNiveau();
+  else if (r === 'symboles') {
+    profil.symboles = profil.symboles === false;
+    reglerSymboles(profil.symboles);
+    sauver();
+    dessiner();
+  } else if (r === 'quitter') revenir(options.defi ? 'niveaux' : '');
 }
 
 // ---------- Commandes ----------
 
 function echanger() {
   if (enCours || !S) return;
+  if (S.courante.tir) return dire('Tirez d’abord votre bulle spéciale.');
   [S.courante, S.suivante] = [S.suivante, S.courante];
   sauver();
   dessiner();
-  dire('Bulles échangées.');
 }
 
 function annuler() {
@@ -561,6 +745,7 @@ function annuler() {
 
 async function indice() {
   if (enCours || !S) return;
+  if (S.courante.tir === 'feu') return dire('La boule de feu traverse tout : visez là où il y a le plus de bonbons.');
   dire('Je cherche un bon tir…');
   const { coup } = await usine.calculer({ genre: 'conseil', plateau: S.plateau, courante: S.courante, suivante: S.suivante, objectif: S.objectif });
   if (!racine || !S || !coup) return;
@@ -574,61 +759,74 @@ async function indice() {
   demarrer();
 }
 
-async function choisirNiveau() {
-  if (enCours) return;
-  const max = profil.niveauMax;
-  const liste = Array.from({ length: max }, (_, i) => i + 1).reverse();
-  const fond = document.createElement('div');
-  fond.className = 'sheet temp';
-  fond.innerHTML = `
-    <div class="sheet-box" role="dialog" aria-modal="true">
-      <h3>Choisir un niveau</h3>
-      <div class="bl-niveaux">
-        ${liste.map((n) => `<button class="bl-niv ${n === max ? 'courant' : ''}" data-n="${n}"><b>${n}</b><small>${'★'.repeat(profil.etoiles[n] || 0)}${'☆'.repeat(3 - (profil.etoiles[n] || 0))}</small></button>`).join('')}
-      </div>
-      <div class="sheet-actions"><button class="btn" data-n="">Fermer</button></div>
-    </div>`;
-  document.body.append(fond);
-  animer(fond.firstElementChild, [{ transform: 'translateY(50px)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 300 });
-  const n = await new Promise((ok) => fond.addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-n]');
-    if (!b && e.target !== fond) return;
-    fond.remove();
-    ok(b ? Number(b.dataset.n) || null : null);
-  }));
-  if (!n) return;
-  if (S && !S.fini && S.utilises > 0 && !(await demander({ titre: 'Changer de niveau ?', texte: 'Le niveau en cours sera abandonné.', oui: 'Oui, changer', non: 'Non, continuer' }))) return;
-  commencer(n);
+async function utiliserBonus(type) {
+  if (enCours || !S) return;
+  if (S.courante.tir) return dire('Une bulle spéciale est déjà prête : tirez-la d’abord.');
+  const def = BONUS[type];
+  if (!modeDev() && !(await demander({ titre: def.nom, texte: `${def.aide} Elle coûte ${pluriel(def.prix, 'étoile')} (vous en avez ${solde()}).`, oui: `Oui, ${def.prix} ★`, non: 'Non merci' }))) return;
+  if (!depenserEtoiles(def.prix)) return dire(`Il faut ${pluriel(def.prix, 'étoile')} pour cette aide. Jouez pour en gagner !`);
+  S.reserve = S.courante;
+  S.courante = { tir: type };
+  S.bonusEnCours = true;
+  sauver();
+  dessinerHud();
+  dire(`${def.nom} prête ! ${def.aide}`);
+  demarrer();
+}
+
+async function choisirNiveau(direct = false) {
+  if (enCours && !direct) return;
+  const max = modeDev() ? Math.max(profil.niveauMax, 99) : profil.niveauMax;
+  const liste = Array.from({ length: max }, (_, i) => i + 1);
+  const el = panneau(`
+    <h3 class="bl-titre-panneau">Choisir un niveau</h3>
+    <div class="bl-niveaux">
+      ${liste.map((n) => `<button class="bl-niv ${n === profil.niveauMax ? 'courant' : ''}" data-r="${n}"><b>${n}</b><small>${'★'.repeat(profil.etoiles[n] || 0)}<span>${'★'.repeat(3 - (profil.etoiles[n] || 0))}</span></small></button>`).join('')}
+    </div>
+    <div class="bl-boutons"><button class="bl-rond" data-r="fermer"><span class="ic">✕</span><span>Fermer</span></button></div>`, 'niveaux');
+  el.querySelector('.bl-niv.courant')?.scrollIntoView({ block: 'center' });
+  const r = await choixPanneau(el);
+  if (r === 'fermer') { if (!S || S.fini) commencer(profil.niveauMax); return; }
+  commencer(Number(r));
 }
 
 function dessinerHud() {
   if (!racine) return;
   const hud = $('#bl-hud', racine);
-  if (!S) {
-    hud.innerHTML = `<p class="bl-titre">Niveau ${profil.niveauMax}</p>`;
-    $('#bl-jouer', racine).hidden = false;
-    return;
-  }
-  $('#bl-jouer', racine).hidden = true;
+  if (!S) { hud.innerHTML = ''; return; }
   const restantes = Math.max(0, S.tirs - S.utilises);
-  const etoiles = etoilesNiveau(S, S.utilises + 1, S.offerts);
+  const max = Math.max(S.paliers[2] * 1.15, S.score, 1);
+  const pos = (v) => `${Math.min(100, (v / max) * 100)}%`;
+  const etoiles = etoilesNiveau(S, S.score, S.offerts);
   const objectif = S.objectif === 'liberer'
     ? `Poussins : <b>${S.poussinsDepart - nbPoussins(S.plateau)} / ${S.poussinsDepart}</b>`
-    : `${OBJECTIFS.vider}`;
+    : OBJECTIFS.vider;
   hud.innerHTML = `
-    <div class="bl-ligne">
-      <p class="bl-titre">${options.defi ? 'Aventure' : `Niveau ${S.n}`}</p>
-      <p class="bl-etoiles" aria-label="Étoiles possibles : ${etoiles}">${'★'.repeat(etoiles)}<span>${'★'.repeat(3 - etoiles)}</span></p>
+    <div class="bl-barre">
+      <span class="bl-pastille">${options.defi ? 'Aventure' : `Niveau ${S.n}`}</span>
+      <span class="bl-progres" aria-label="Score ${S.score}, ${etoiles} étoile${etoiles > 1 ? 's' : ''}">
+        <i style="width:${pos(S.score)}"></i>
+        ${[S.paliers[1] * 0.5, S.paliers[1], S.paliers[2]].map((v, k) => `<span class="bl-repere ${S.score >= v && (k > 0 || S.score > 0) ? 'on' : ''}" style="left:${pos(v)}">${ETOILE_SVG}</span>`).join('')}
+      </span>
+      <button class="bl-pause" id="bl-pause" aria-label="Pause">II</button>
     </div>
-    <div class="bl-ligne">
+    <div class="bl-infos">
       <p class="bl-objectif">${objectif}</p>
-      <p class="bl-tirs ${restantes <= 3 ? 'peu' : ''}" aria-label="${restantes} bulles restantes"><b>${restantes}</b> bulles</p>
+      <p class="bl-score"><b>${S.score}</b> pts${multiplicateur(S.serie || 0) > 1 ? ` <span class="bl-serie">× ${multiplicateur(S.serie).toLocaleString('fr-FR')}</span>` : ''}</p>
+      <p class="bl-tirs ${restantes <= 3 ? 'peu' : ''}" aria-label="${restantes} bulles restantes"><b>${restantes}</b><span>bulles</span></p>
     </div>
-    <div class="bl-ligne">
-      <p class="bl-score">${S.score} points</p>
-      <span class="bl-jauge" aria-label="Bonus"><i style="width:${Math.min(100, (S.jauge / SEUIL_BONUS) * 100)}%"></i></span>
-    </div>`;
+    <span class="bl-jauge" aria-label="Bonus offert bientôt"><i style="width:${Math.min(100, (S.jauge / SEUIL_BONUS) * 100)}%"></i></span>`;
+  $('#bl-pause', racine).addEventListener('click', pause);
   $('#bl-annuler', racine).disabled = !S.historique?.length;
+  const prixTexte = (p) => (modeDev() ? '∞' : `${p} ★`);
+  $('#bl-bonus', racine).innerHTML = Object.entries(BONUS).map(([k, b]) => `
+    <button class="bl-booster" data-bonus="${k}" aria-label="${b.nom}, ${prixTexte(b.prix)}">
+      <canvas width="64" height="64" data-dessin="${k}"></canvas><span>${b.nom}</span><small>${prixTexte(b.prix)}</small>
+    </button>`).join('');
+  $('#bl-bonus', racine).querySelectorAll('canvas').forEach((c) => {
+    const k = c.dataset.dessin, g = c.getContext('2d');
+    dessinerBulle(g, 32, 32, 26, { tir: k }, 0);
+  });
 }
 
 function construire() {
@@ -636,18 +834,17 @@ function construire() {
     <div class="bl-body">
       <div class="bl-hud" id="bl-hud"></div>
       <div class="bl-zone">
-        <canvas class="bl-toile" aria-label="Plateau de bulles. Posez le doigt pour viser, levez-le pour tirer."></canvas>
-        <p class="bl-chargement" id="bl-chargement" hidden>Je prépare le niveau…</p>
-        <button class="btn primary bl-jouer" id="bl-jouer" hidden>Jouer</button>
+        <canvas class="bl-toile" aria-label="Plateau de bonbons. Posez le doigt pour viser, levez-le pour tirer."></canvas>
+        <p class="bl-chargement" id="bl-chargement" hidden>Je prépare les bonbons…</p>
       </div>
       <div class="bl-side">
         <p class="status" id="bl-status" aria-live="polite"></p>
+        <div class="bl-boosters" id="bl-bonus"></div>
         <div class="tools">
           <button class="btn" id="bl-annuler">Annuler</button>
           <button class="btn" id="bl-indice">Indice</button>
           <button class="btn" id="bl-echanger">Échanger</button>
         </div>
-        ${options.defi ? '' : '<button class="btn" id="bl-niveaux">Choisir un niveau</button>'}
         <p class="tip">Posez le doigt là où vous voulez envoyer la bulle, levez-le pour tirer. Touchez la petite bulle en bas à gauche pour l’échanger.</p>
       </div>
     </div>`;
@@ -663,7 +860,7 @@ function construire() {
     demarrer();
   });
   toile.addEventListener('pointermove', (e) => {
-    if (!visee && !toile.hasPointerCapture(e.pointerId)) return;
+    if (!toile.hasPointerCapture(e.pointerId)) return;
     const a = angleVers(e);
     visee = a === null ? null : { angle: a };
   });
@@ -678,8 +875,10 @@ function construire() {
   $('#bl-annuler', racine).addEventListener('click', annuler);
   $('#bl-indice', racine).addEventListener('click', indice);
   $('#bl-echanger', racine).addEventListener('click', echanger);
-  $('#bl-niveaux', racine)?.addEventListener('click', choisirNiveau);
-  $('#bl-jouer', racine).addEventListener('click', () => commencer(options.defi ? numeroDuDefi() : profil.niveauMax));
+  $('#bl-bonus', racine).addEventListener('click', (e) => {
+    const b = e.target.closest('[data-bonus]');
+    if (b) utiliserBonus(b.dataset.bonus);
+  });
   surRedim = () => { if (racine) { dimensionner(); dessiner(); } };
   window.addEventListener('resize', surRedim);
 }
@@ -689,17 +888,19 @@ function construire() {
 export default {
   id: 'bulles',
   nom: 'Bulles',
-  description: 'Faites éclater les bulles, niveau après niveau',
+  description: 'Faites éclater les bonbons, niveau après niveau',
   paysage: true,
-  icone: `<svg viewBox="0 0 64 64" aria-hidden="true"><rect class="ic-bg" x="4" y="4" width="56" height="56" rx="12"/>
-    <circle cx="20" cy="18" r="8" fill="#E8504F"/><circle cx="36" cy="18" r="8" fill="#3B82F6"/><circle cx="28" cy="31" r="8" fill="#F5C531"/>
-    <circle cx="44" cy="31" r="8" fill="#2DBB64"/><circle cx="32" cy="50" r="7" fill="#9B5DE5"/><path d="M32 43l-6 -10" stroke="#1D5C48" stroke-width="2.5" stroke-dasharray="2 3"/>
-    <circle cx="17" cy="15" r="2.5" fill="#fff" opacity=".6"/><circle cx="33" cy="15" r="2.5" fill="#fff" opacity=".6"/></svg>`,
+  icone: `<svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="blfond" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4A2BA8"/><stop offset="1" stop-color="#F08BD8"/></linearGradient></defs>
+    <rect x="4" y="4" width="56" height="56" rx="14" fill="url(#blfond)"/>
+    <circle cx="20" cy="19" r="9" fill="#F0354B"/><path d="M13 15c5 1 9 5 12 10M15 24c4-1 8-5 9-11" stroke="#FFE1E6" stroke-width="2.5" fill="none"/>
+    <circle cx="40" cy="19" r="9" fill="#2C8CF5"/><path d="M40 19m-5 0a5 5 0 1 0 10 0a3 3 0 1 0 -6 0" stroke="#D2F0FF" stroke-width="2.5" fill="none"/>
+    <circle cx="30" cy="35" r="9" fill="#FFC21A"/><path d="M23 31l14 8M24 38l12-7" stroke="#FF8B1F" stroke-width="2.5"/>
+    <circle cx="32" cy="52" r="7" fill="#4CC92E"/><circle cx="17" cy="16" r="2.5" fill="#fff" opacity=".7"/><circle cx="37" cy="16" r="2.5" fill="#fff" opacity=".7"/></svg>`,
 
   resume() {
     options = {};
     charger();
-    return S && !S.fini ? `Niveau ${S.n} en cours` : `Prochain niveau : ${profil.niveauMax}`;
+    return S ? `Niveau ${S.n} en cours` : `Prochain niveau : ${profil.niveauMax}`;
   },
 
   monter(conteneur, opts = {}) {
@@ -712,10 +913,10 @@ export default {
     conseil = null;
     charger();
     construire();
-    if (options.defi && (!S || S.fini)) S = null;
-    if (S && !S.fini) {
+    if (S) {
       dessinerHud();
       dessiner();
+      demarrer();
       dire('Votre partie a été retrouvée.');
       if (!options.defi) preparer(S.n + 1);
     } else commencer(options.defi ? numeroDuDefi() : profil.niveauMax);
@@ -724,9 +925,9 @@ export default {
   demonter() {
     if (anim) cancelAnimationFrame(anim);
     anim = null;
+    fermerPanneaux();
     window.removeEventListener('resize', surRedim);
     racine = null;
     ctx = null;
   },
 };
-

@@ -234,6 +234,14 @@ button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .install-zone:not(:has(> :not([hidden]))) { display: none; }
 .install-aide { border-style: dashed; font-weight: 700; }
 
+/* Bandeau du mode développeur */
+.dev-bandeau {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between;
+  background: repeating-linear-gradient(45deg, #FFF2B8 0 12px, #FFE68A 12px 24px); color: #3A2A00;
+  border: 2px solid #E0B400; border-radius: 14px; padding: 8px 12px; font-size: .95rem;
+}
+.dev-bandeau .btn { min-height: 44px; background: #fff; }
+
 /* Logo de l'accueil */
 .home-top { align-items: center; }
 .home-top .logo { width: 64px; height: 64px; border-radius: 16px; flex: none; box-shadow: 0 3px 8px rgba(0, 0, 0, .15); }

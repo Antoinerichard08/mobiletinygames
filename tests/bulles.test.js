@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   plateauVide, voisines, centre, valide, largeurRangee, trajectoire, resoudre, reussi, debordement, couleursPresentes,
-  cases, cloner, RANGEES_MAX, LARGEUR, nbPoussins, points,
+  cases, cloner, RANGEES_MAX, LARGEUR, nbPoussins, points, multiplicateur,
 } from '../src/games/bulles/moteur.js';
 import { genererNiveau, simuler, parametres, etoilesNiveau, meilleurCoup, cibles, niveauPourDefi } from '../src/games/bulles/generateur.js';
 
@@ -167,11 +167,90 @@ test('le meilleur coup choisit d’éclater quand c’est possible', () => {
   assert.ok(cibles(p).length > 5);
 });
 
-test('étoiles : 3 si l’on fait aussi bien que le joueur automatique, 1 avec des tirs offerts', () => {
-  const L = { parfait: 10, bien: 13 };
-  assert.equal(etoilesNiveau(L, 9), 3);
-  assert.equal(etoilesNiveau(L, 12), 2);
-  assert.equal(etoilesNiveau(L, 20), 1);
-  assert.equal(etoilesNiveau(L, 5, true), 1);
+test('étoiles : selon le score atteint, une seule avec des bulles offertes', () => {
+  const L = { paliers: [0, 1000, 2000] };
+  assert.equal(etoilesNiveau(L, 2500), 3);
+  assert.equal(etoilesNiveau(L, 1500), 2);
+  assert.equal(etoilesNiveau(L, 300), 1);
+  assert.equal(etoilesNiveau(L, 5000, true), 1);
   assert.ok(niveauPourDefi('difficile', 3) > niveauPourDefi('facile', 3));
+});
+
+// ---------- Mécaniques avancées ----------
+
+test('bulle étoile : toutes les bulles de la couleur tirée disparaissent', () => {
+  const p = plateauVide();
+  p[0][0] = { type: 'etoile' };
+  p[0][3] = b(2); p[0][7] = b(2); p[0][5] = b(1);
+  const ev = resoudre(p, { r: 1, c: 0 }, { k: 2 });
+  assert.equal(ev.etoiles.length, 1);
+  assert.equal(p[0][3], null);
+  assert.equal(p[0][7], null);
+  assert.ok(p[0][5], 'les autres couleurs restent');
+});
+
+test('bulle éclair : toute sa rangée disparaît quand un groupe voisin éclate', () => {
+  const p = plateauVide();
+  for (let c = 0; c < 11; c++) p[0][c] = b(c % 2 ? 3 : 4);
+  p[1][0] = b(1); p[1][1] = b(1);
+  p[2][1] = { type: 'eclair' };
+  p[2][4] = b(5);
+  p[1][4] = b(5); // tient la bulle 2,4 au plafond
+  const ev = resoudre(p, { r: 2, c: 0 }, { k: 1 });
+  assert.equal(ev.eclairs.length, 1);
+  assert.equal(p[2][4], null, 'la rangée de l’éclair est vidée');
+});
+
+test('bulle « +3 » : trois bulles en plus quand elle éclate', () => {
+  const p = plateauVide();
+  p[0][0] = b(1, { plus: 3 }); p[0][1] = b(1);
+  const ev = resoudre(p, { r: 0, c: 2 }, { k: 1 });
+  assert.equal(ev.tirsBonus, 3);
+});
+
+test('bulle bicolore : elle compte pour ses deux couleurs', () => {
+  const p = plateauVide();
+  p[0][0] = b(1, { k2: 4 }); p[0][1] = b(4);
+  const ev = resoudre(p, { r: 0, c: 2 }, { k: 4 });
+  assert.equal(ev.eclatees.length, 3);
+  assert.deepEqual(couleursPresentes(p), []);
+});
+
+test('bulle mystère : sa couleur se révèle quand une voisine éclate', () => {
+  const p = plateauVide();
+  p[0][0] = b(1, { mystere: true }); p[0][1] = b(1);
+  assert.equal(resoudre(p, { r: 1, c: 0 }, { k: 1 }).eclatees.length, 0, 'encore cachée : elle ne compte pas');
+  const q = plateauVide();
+  q[0][0] = b(3, { mystere: true }); q[0][1] = b(2); q[0][2] = b(2);
+  const ev = resoudre(q, { r: 0, c: 3 }, { k: 2 });
+  assert.equal(ev.reveles.length, 1);
+  assert.equal(q[0][0].mystere, false);
+});
+
+test('boule de feu : elle traverse tout jusqu’au plafond', () => {
+  const p = plateauVide();
+  for (let r = 0; r < 4; r++) for (let c = 0; c < largeurRangee(r); c++) p[r][c] = b((r + c) % 4);
+  const { touchees, cible } = trajectoire(p, Math.PI / 2, true);
+  assert.equal(cible, null);
+  assert.ok(touchees.length >= 4, 'plusieurs rangées traversées');
+  const ev = resoudre(p, null, { tir: 'feu' }, touchees);
+  assert.ok(ev.eclatees.length >= 4);
+});
+
+test('série : chaque tir réussi d’affilée rapporte un peu plus', () => {
+  const ev = { eclatees: [1, 2, 3], tombees: [], poussins: 0 };
+  assert.equal(points(ev, 1), 30);
+  assert.equal(points(ev, 3), 60);
+  assert.equal(multiplicateur(20), 3, 'jusqu’à × 3');
+});
+
+test('génération : au moins 10 bulles, et 60 % de bulles ordinaires au moins', () => {
+  for (const n of [30, 45, 60]) {
+    const L = genererNiveau(n);
+    assert.ok(L.tirs >= 10);
+    const toutes = [...cases(L.plateau)];
+    const speciales = toutes.filter(([, , v]) => v.type !== 'bulle' || v.glace || v.mystere || v.plus || v.k2 !== undefined).length;
+    assert.ok(speciales <= toutes.length * 0.45, `niveau ${n} : ${speciales} spéciales sur ${toutes.length}`);
+    assert.ok(L.paliers[2] > L.paliers[1]);
+  }
 });

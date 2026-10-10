@@ -10,6 +10,7 @@ import { $ } from './core/outils.js';
 import { victoires } from './core/stockage.js';
 import { fermerDialogue, demander } from './core/dialogue.js';
 import { solde } from './core/etoiles.js';
+import { modeDev, definirModeDev, lireModeDevDansAdresse, ETOILES_DEV } from './core/config.js';
 import { ecouter } from './core/evenements.js';
 import { definirNavigation } from './core/navigation.js';
 import { animer, apparaitre, mouvementReduit, pop } from './core/mouvement.js';
@@ -19,7 +20,10 @@ import { niveau, etat as etatAventure, niveauCourant, statut } from './progressi
 import { liste as listeMissions } from './progression/missions.js';
 import ile from './ile/index.js';
 
+lireModeDevDansAdresse(); // « ?dev=1 » active le mode développeur sur ce téléphone
 const app = $('#app');
+/** Le solde affiché : ∞ en mode développeur. */
+const soldeTexte = () => (modeDev() ? '∞' : String(solde()));
 // Dans l'APK (Capacitor), les fichiers sont déjà dans l'appli : pas de service worker ni d'installation.
 const dansApk = Boolean(window.Capacitor);
 const ECRANS = { niveaux: carte, ile };
@@ -32,7 +36,7 @@ const parcours = []; // écrans visités pendant cette session (pour un retour l
 // Le compteur d'étoiles se met à jour (et saute un peu) quand on en gagne.
 ecouter('etoiles', ({ solde: n }) => {
   for (const puce of document.querySelectorAll('.star-chip b')) {
-    puce.textContent = n;
+    puce.textContent = n >= ETOILES_DEV ? '∞' : n;
     pop(puce.parentElement, 1.25);
   }
 });
@@ -132,8 +136,9 @@ function afficherAccueil() {
           <h1>Mom's games</h1>
           <p class="lede">Vos jeux préférés, sans publicité.</p>
         </div>
-        <span class="star-chip" aria-label="Vos étoiles">★ <b>${solde()}</b></span>
+        <span class="star-chip" aria-label="Vos étoiles">★ <b>${soldeTexte()}</b></span>
       </div>
+      ${modeDev() ? '<div class="dev-bandeau"><span><b>Mode développeur</b> : étoiles et ressources illimitées, tout est ouvert.</span><button class="btn" id="dev-quitter">Quitter ce mode</button></div>' : ''}
       <div class="install-zone">
         <button class="btn primary install" id="install" hidden>Installer sur le téléphone</button>
         <button class="btn install-aide" id="install-aide" hidden>Comment installer l’appli sur le téléphone ?</button>
@@ -143,7 +148,7 @@ function afficherAccueil() {
         <button class="tile mode" data-aller="niveaux">${ICONE_AVENTURE}<span><span class="t-name">Aventure</span>
           <span class="t-desc">${ouvert ? `Niveau ${courant} vous attend · ${e.jetons} nouveau${e.jetons > 1 ? 'x' : ''} aujourd’hui` : `Niveau ${courant} : ouvert demain. Rejouez pour plus d’étoiles !`}</span></span></button>
         <button class="tile mode" data-aller="ile">${ICONE_ILE}<span><span class="t-name">Mon île</span>
-          <span class="t-desc">Construisez, récoltez, agrandissez votre île (${solde()} ★)</span></span></button>
+          <span class="t-desc">Construisez, récoltez, agrandissez votre île (${soldeTexte()} ★)</span></span></button>
       </div>
       <div class="missions-accueil">
         <p class="titre-section">Missions du jour <b>${faites}/3</b></p>
@@ -167,6 +172,7 @@ function afficherAccueil() {
   // les blocs arrivent l'un après l'autre
   [...app.querySelectorAll('.tile, .missions-accueil')].forEach((el, n) => apparaitre(el, { delai: 40 + n * 60 }));
   $('#install', app).addEventListener('click', installer);
+  $('#dev-quitter', app)?.addEventListener('click', () => { definirModeDev(false); location.replace(location.pathname); });
   $('#install-aide', app).addEventListener('click', aideInstallation);
   majZoneInstallation();
 }
