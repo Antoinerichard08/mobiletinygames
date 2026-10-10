@@ -1,148 +1,432 @@
-/* Mon île : ressources, île en pixel art avec ses habitants, onglets de construction. */
-.ile-body { display: flex; flex-direction: column; gap: 12px; }
+/* Mon île, plein écran : le monde (canvas) et son interface façon jeu de construction.
+   La scène a ses propres couleurs (un monde de jeu), identiques en mode clair et sombre. */
 
-.ile-res { display: flex; flex-wrap: wrap; gap: 6px; }
-.res-puce {
-  display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px 4px 6px; border-radius: 999px;
-  background: var(--surface); border: 2px solid var(--line); font-weight: 700; font-size: 1.05rem;
-}
-.res-puce .tuile, .res-puce .sprite { flex: none; }
-.etoile-ic { color: var(--gold); line-height: 1; text-shadow: 0 1px 0 rgba(0, 0, 0, .25); }
+html.ile-ouverte, html.ile-ouverte body { overflow: hidden; overscroll-behavior: none; }
+.screen.plein { padding: 0; margin: 0; max-width: none; }
 
-.beaute { display: flex; flex-direction: column; gap: 4px; }
-.beaute small { color: var(--muted); font-weight: 400; }
-.beaute .barre { height: 12px; border-radius: 8px; background: var(--line); overflow: hidden; }
-.beaute .barre i { display: block; height: 100%; background: linear-gradient(90deg, var(--brand), var(--gold)); border-radius: 8px; }
-.ile-nav { display: flex; align-items: center; justify-content: center; gap: 12px; text-align: center; }
-.ile-nav p { display: flex; flex-direction: column; font-family: var(--font-display); font-size: 1.25rem; }
-.ile-nav small { font-family: var(--font-body); font-size: .9rem; color: var(--muted); }
-.ile-nav .btn { min-width: 56px; font-size: 1.3rem; }
+.ile-scene {
+  --contour: 0 2px 0 rgba(0, 0, 0, .35), 1.5px 1.5px 0 #1c2433, -1.5px 1.5px 0 #1c2433, 1.5px -1.5px 0 #1c2433, -1.5px -1.5px 0 #1c2433, 0 0 3px #1c2433;
+  --bord-g: max(10px, env(safe-area-inset-left));
+  --bord-d: max(10px, env(safe-area-inset-right));
+  position: fixed; left: 0; top: 0; z-index: 20; overflow: hidden; transform-origin: 0 0;
+  background: #639bff; color: #fff; font-family: var(--font-body); font-weight: 700;
+  user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+  container-type: size; container-name: scene;
+}
+.ile-toile { position: absolute; left: 0; top: 0; display: block; touch-action: none; cursor: grab; }
+.ile-toile:active { cursor: grabbing; }
+.ile-scene svg { display: block; width: 1em; height: 1em; }
+:where(.ile-scene) button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
+.ile-scene .tuile, .ile-scene .sprite { display: block; flex: none; }
 
-/* La mer et l'île */
-.ile-mer {
-  position: relative; overflow: hidden; border-radius: 22px; padding: 10px; display: grid; place-items: center;
-  background: var(--mer); border: 3px solid var(--mer-fonce); min-height: 200px; box-shadow: inset 0 0 40px rgba(0, 40, 120, .25);
+/* ---------- Boutons ---------- */
+:where(.rond) { --c1: #4c9bff; --c2: #1f5fd6; --c3: #0d2f6e; }
+.rond {
+  position: relative; width: 56px; height: 56px; border-radius: 50%; border: 3px solid var(--c3); cursor: pointer; padding: 0;
+  display: grid; place-items: center; font-size: 28px; color: #fff;
+  background: radial-gradient(circle at 50% 30%, var(--c1), var(--c2) 70%);
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, .4), inset 0 -4px 0 rgba(0, 0, 0, .18), 0 4px 0 var(--c3), 0 6px 10px rgba(0, 0, 0, .3);
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, .3));
 }
-.ile-plan { position: relative; z-index: 1; }
-.ile-grille { display: grid; position: absolute; inset: 0; filter: drop-shadow(0 4px 0 rgba(0, 0, 0, .12)); }
-.ile-vie { position: absolute; inset: 0; pointer-events: none; z-index: 3; overflow: visible; }
-.case { position: relative; width: var(--ts); height: var(--ts); padding: 0; border: 0; background: none; cursor: pointer; border-radius: 0; }
-.case .fond, .case .fond > * { display: block; width: 100%; height: 100%; }
-.case.travaux-haut .fond { filter: sepia(.35) brightness(.95); }
-.case.possible::after { content: ""; position: absolute; inset: 2px; border: 2px dashed rgba(255, 255, 255, .9); border-radius: 6px; pointer-events: none; z-index: 2; }
-.case.meilleur::after { border: 3px solid var(--gold); box-shadow: 0 0 12px var(--gold); }
-.case .gain {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 4; pointer-events: none;
-  background: rgba(21, 34, 29, .82); color: #fff; font-weight: 700; font-size: calc(var(--ts) * .34); min-width: 1.8em;
-  padding: 1px 5px; border-radius: 999px; text-align: center;
-}
-.case.meilleur .gain { background: var(--gold); color: #3A2A00; }
+.rond svg { filter: drop-shadow(0 2px 0 rgba(0, 0, 0, .35)); }
+.rond.grand { width: 66px; height: 66px; font-size: 34px; }
+.rond:disabled { filter: grayscale(1) opacity(.6); cursor: default; }
+.bleu { --c1: #4c9bff; --c2: #1f5fd6; --c3: #0d2f6e; }
+.vert { --c1: #8ef05a; --c2: #3a9b1c; --c3: #1d5a0a; }
+.rouge { --c1: #ff8a7a; --c2: #d13a2a; --c3: #6e130a; }
+.jaune { --c1: #ffe680; --c2: #f2b200; --c3: #7a4a00; }
+.orange { --c1: #ffb35c; --c2: #e0701a; --c3: #6e3205; }
+.violet { --c1: #c49bff; --c2: #7a42e0; --c3: #3b1675; }
+.bois { --c1: #e8b27a; --c2: #a8652a; --c3: #4e2a0c; }
+.gris { --c1: #f2f4f8; --c2: #c5ccd8; --c3: #4a5468; }
 
-/* Minuteur d'un chantier : un anneau qui se remplit */
-.minuteur {
-  position: absolute; left: 50%; bottom: -4px; transform: translateX(-50%); z-index: 5; pointer-events: none;
-  display: flex; align-items: center; gap: 3px; padding: 1px 6px 1px 2px; border-radius: 999px;
-  background: rgba(21, 34, 29, .85); color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap;
+:where(.gros-bouton) { --c1: #ffe680; --c2: #f2b200; --c3: #7a4a00; }
+.gros-bouton {
+  width: 88px; height: 82px; border-radius: 20px; border: 3px solid var(--c3); cursor: pointer; padding: 4px 0 6px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  background: linear-gradient(180deg, var(--c1), var(--c2));
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, .5), inset 0 -5px 0 rgba(0, 0, 0, .15), 0 5px 0 var(--c3), 0 8px 14px rgba(0, 0, 0, .35);
+  font-family: var(--font-display); font-size: 1.05rem; text-shadow: var(--contour); color: #fff;
 }
-.minuteur::before {
-  content: ""; width: 12px; height: 12px; border-radius: 50%;
-  background: conic-gradient(var(--gold) calc(var(--p, 0) * 360deg), rgba(255, 255, 255, .25) 0);
-}
-/* Bulle de récolte au-dessus d'un bâtiment */
-.recolte {
-  position: absolute; left: 50%; top: -14px; transform: translateX(-50%); z-index: 6;
-  display: flex; align-items: center; gap: 2px; padding: 2px 7px 2px 3px; border-radius: 999px;
-  background: #fff; color: #15221D; font-weight: 700; font-size: 13px; box-shadow: 0 2px 0 rgba(0, 0, 0, .25);
-}
-.recolte::after { content: ""; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border: 5px solid transparent; border-bottom: 0; border-top-color: #fff; }
-.recolte.plein { background: var(--gold); }
-.recolte.plein::after { border-top-color: var(--gold); }
+.gros-bouton .gb-ic { font-size: 38px; filter: drop-shadow(0 2px 0 var(--c3)); }
+.gros-bouton.construire { --c1: #8ef05a; --c2: #3a9b1c; --c3: #1d5a0a; }
+.gros-bouton.terminer { --c1: #8ef05a; --c2: #3a9b1c; --c3: #1d5a0a; position: absolute; right: var(--bord-d); bottom: 14px; width: auto; height: 64px; flex-direction: row; gap: 8px; padding: 0 22px; pointer-events: auto; }
+.gros-bouton.terminer[hidden] { display: none; }
+.gros-bouton.terminer .gb-ic { font-size: 28px; }
 
-.envol {
-  position: absolute; left: 50%; top: 0; z-index: 8; pointer-events: none; color: #fff; font-weight: 700; font-size: 1.15rem;
-  text-shadow: 0 2px 0 rgba(0, 0, 0, .5); white-space: nowrap; display: flex; align-items: center; gap: 2px;
-}
-.vol-ressource { position: fixed; z-index: 90; pointer-events: none; }
-.ramasser { min-height: 60px; font-size: 1.1rem; }
+/* ---------- L'interface par-dessus le monde ---------- */
+.hud { position: absolute; inset: 0; pointer-events: none; }
+.hud > * { pointer-events: auto; }
+.hud-hg { position: absolute; left: var(--bord-g); top: 8px; display: grid; grid-template-columns: auto auto; gap: 6px 8px; align-items: center; justify-items: start; }
+.hud-hg .pastille-batisseurs { grid-column: 1 / -1; }
+.hud-hc { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.hud-hd { position: absolute; right: var(--bord-d); top: 8px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.hud-bg { position: absolute; left: var(--bord-g); bottom: 14px; display: flex; gap: 10px; align-items: flex-end; }
+.hud-bd { position: absolute; right: var(--bord-d); bottom: 14px; display: flex; gap: 10px; align-items: flex-end; }
 
-/* Habitants, animaux, mouettes : images de la planche de sprites, animées par étapes */
-.etre { position: absolute; left: 0; top: 0; width: var(--ts); height: var(--ts); pointer-events: none; }
-.etre > i {
-  display: block; width: 100%; height: 100%;
-  background: url('../../assets/ile/sprites.png') no-repeat; background-size: calc(var(--ts) * 16) calc(var(--ts) * 8);
-  background-position: 0 calc(var(--v, 0) * var(--ts) * -1); image-rendering: pixelated;
+/* niveau de l'île et beauté */
+.niveau { display: flex; align-items: center; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+.niveau-badge {
+  position: relative; z-index: 1; width: 58px; height: 62px; display: grid; place-items: center; flex: none;
+  background: linear-gradient(180deg, #6fb6ff, #2a62d6); border: 3px solid #0d2f6e;
+  clip-path: polygon(50% 0, 100% 22%, 100% 74%, 50% 100%, 0 74%, 0 22%);
 }
-.etre.gauche > i { transform: scaleX(-1); }
-.etre.porte > i { background-position-x: calc(var(--ts) * -5); }
-.etre.mouton > i { background-position: 0 calc(var(--ts) * -5); }
-.etre.poule > i { background-position: calc(var(--ts) * -2) calc(var(--ts) * -5); }
-.etre.mouette > i { background-position: calc(var(--ts) * -4) calc(var(--ts) * -5); }
-.fumee {
-  position: absolute; width: 8px; height: 8px; border-radius: 50%; background: rgba(240, 240, 240, .85);
-  pointer-events: none; z-index: 2;
+.niveau-badge::before { content: ""; position: absolute; inset: 3px; clip-path: inherit; background: linear-gradient(180deg, #8fc8ff, #3b74e6); }
+.niveau-badge b { position: relative; font-size: 1.6rem; text-shadow: var(--contour); }
+.niveau-info {
+  display: flex; flex-direction: column; gap: 3px; margin-left: -12px; padding: 5px 14px 6px 20px; min-width: 170px;
+  background: rgba(16, 22, 40, .72); border-radius: 0 16px 16px 0; border: 2px solid rgba(255, 255, 255, .18);
+}
+.niveau-info b { font-size: 1.05rem; text-shadow: var(--contour); }
+.niveau-info small { font-size: .82rem; color: #ffe9a6; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+.jauge { height: 10px; border-radius: 6px; background: rgba(0, 0, 0, .5); overflow: hidden; border: 1px solid rgba(0, 0, 0, .4); }
+.jauge i { display: block; height: 100%; background: linear-gradient(180deg, #fff3a0, #ffc21a 60%, #e08a00); border-radius: 6px; }
+
+/* nom de l'île et bâtisseurs */
+.ruban {
+  display: flex; align-items: center; gap: 4px; padding: 2px; border-radius: 16px;
+  background: linear-gradient(180deg, #e39a4a, #b8662a); border: 3px solid #4e2a0c;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .35), 0 4px 0 #4e2a0c, 0 6px 10px rgba(0, 0, 0, .3);
+}
+.ruban span { font-family: var(--font-display); font-size: 1.2rem; text-shadow: var(--contour); padding: 0 10px; white-space: nowrap; }
+.ruban-fleche { width: 48px; height: 44px; border-radius: 12px; border: 0; background: rgba(0, 0, 0, .18); font-size: 22px; display: grid; place-items: center; cursor: pointer; }
+.ruban-fleche:disabled { opacity: .35; cursor: default; }
+.ruban-fleche[hidden] { display: none; }
+.pastille-batisseurs {
+  display: flex; align-items: center; gap: 2px; padding: 0 12px 0 4px; height: 40px; border-radius: 999px; cursor: pointer;
+  background: rgba(16, 22, 40, .72); border: 2px solid rgba(255, 255, 255, .25); font-size: 1.1rem; text-shadow: var(--contour);
+}
+.pastille-batisseurs.occupes { border-color: #ff8a7a; }
+.pastille-batisseurs.occupes b { color: #ffb4aa; }
+
+/* ressources */
+.capsule {
+  position: relative; display: flex; align-items: center; justify-content: flex-end; height: 38px; min-width: 132px;
+  padding: 0 46px 0 14px; border-radius: 999px; background: rgba(16, 22, 40, .72); border: 2px solid rgba(255, 255, 255, .2);
+  font-size: 1.2rem; text-shadow: var(--contour); font-variant-numeric: tabular-nums;
+}
+.capsule-ic { position: absolute; right: -4px; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; display: grid; place-items: center; }
+button.capsule { cursor: pointer; font: inherit; color: #fff; }
+.capsule-etoiles { border-color: #ffd23f; background: linear-gradient(90deg, rgba(16, 22, 40, .72), rgba(110, 70, 0, .8)); }
+.capsule.petite { height: 32px; min-width: 96px; font-size: 1rem; }
+.ic-etoile { display: inline-block; color: #ffc21a; filter: drop-shadow(0 1.5px 0 #7a4a00) drop-shadow(0 0 1px #7a4a00); line-height: 0; }
+
+/* compteur de « Tout ramasser » */
+#ile-ramasser { width: 62px; height: 62px; font-size: 30px; }
+#ile-ramasser[hidden] { display: none; }
+.compte {
+  position: absolute; top: -8px; right: -8px; min-width: 28px; height: 28px; padding: 0 6px; border-radius: 14px;
+  background: #ff3b30; border: 2px solid #fff; font-size: 1rem; line-height: 24px; text-shadow: none;
 }
 
-/* Onglets et cartes */
-.onglets { display: grid; grid-template-columns: repeat(4, 1fr); border: 2px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--surface); }
-.onglets button { min-height: 56px; border: 0; background: transparent; font-weight: 700; cursor: pointer; padding: 0 4px; font-size: .95rem; }
-.onglets button + button { border-inline-start: 2px solid var(--line); }
-.onglets button[aria-selected="true"] { background: var(--brand); color: var(--on-brand); }
-
-.boutique { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
-.carte-bat {
-  display: grid; grid-template-columns: 48px 1fr; grid-template-rows: auto auto auto; column-gap: 10px; row-gap: 2px; align-items: center;
-  text-align: left; padding: 10px; border-radius: 16px; border: 2px solid var(--line); background: var(--surface); cursor: pointer; min-height: 100px;
+/* actions de la case choisie (en bas, au centre) */
+.hud-actions { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; gap: 6px; align-items: flex-start; }
+.hud-actions[hidden] { display: none; }
+.action { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 88px; background: none; border: 0; padding: 0; cursor: pointer; }
+.action-rond {
+  width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; border: 3px solid var(--c3);
+  background: radial-gradient(circle at 50% 30%, var(--c1), var(--c2) 70%);
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, .4), 0 4px 0 var(--c3), 0 6px 10px rgba(0, 0, 0, .3);
 }
-.carte-bat > .tuile, .carte-bat > .sprite, .carte-bat > .fleche { grid-row: 1 / span 3; }
-.carte-bat .cb-nom { font-weight: 700; line-height: 1.2; }
-.carte-bat .cb-prix { display: flex; flex-wrap: wrap; gap: 4px; font-size: .9rem; color: var(--muted); }
-.carte-bat .cb-desc { color: var(--muted); font-size: .85rem; line-height: 1.2; }
-.carte-bat.choisi { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold); background: var(--soft); }
-.carte-bat:disabled { opacity: .55; cursor: default; }
-.prix { display: inline-flex; align-items: center; gap: 2px; font-weight: 700; color: var(--ink); background: var(--surface-2); border-radius: 8px; padding: 0 6px 0 2px; }
-.prix.manque { color: var(--bad); }
-.prix .etoile-ic { padding-left: 3px; }
-.fleche { width: 48px; height: 48px; display: grid; place-items: center; font-size: 2rem; color: var(--brand); background: var(--soft); border-radius: 12px; }
-.fleche-nord { transform: rotate(-90deg); }
-.fleche-sud { transform: rotate(90deg); }
-.fleche-ouest { transform: rotate(180deg); }
-.agrandir-note { grid-column: 1 / -1; }
-.bat-tete { display: flex; align-items: center; gap: 14px; }
-.bat-tete .tuile, .bat-tete .sprite { flex: none; }
-.manque-texte { color: var(--bad); }
-.sheet-actions .btn .prix { background: rgba(255, 255, 255, .2); color: inherit; }
+.action-rond svg { filter: drop-shadow(0 2px 0 rgba(0, 0, 0, .35)); }
+.action-texte { font-size: .95rem; white-space: nowrap; text-shadow: var(--contour); line-height: 1.1; text-align: center; }
+.action-prix { display: flex; flex-wrap: nowrap; justify-content: center; gap: 2px; }
+.action-prix .prix { background: rgba(255, 255, 255, .94); color: #2a1a08; font-size: .82rem; text-shadow: none; padding: 0 5px 0 2px; }
 
-.navire { position: absolute; z-index: 0; opacity: .95; pointer-events: none; }
-.navire.n1 { top: 6%; left: -40px; }
-.navire.n2 { bottom: 5%; right: -40px; }
+/* étiquette au-dessus de la case choisie */
+.hud-etiquette {
+  position: absolute; left: 0; top: 0; pointer-events: none; display: flex; flex-direction: column; align-items: center;
+  white-space: nowrap; text-shadow: var(--contour);
+}
+.hud-etiquette[hidden] { display: none; }
+.hud-etiquette b { font-size: 1.25rem; }
+.hud-etiquette small { font-size: .95rem; color: #fff3b0; }
+
+/* poser : ✓ et ✗ à côté du fantôme, et le bandeau d'explication */
+.hud-valider { position: absolute; left: 0; top: 0; display: flex; gap: 10px; align-items: center; }
+.hud-valider[hidden] { display: none; }
+.hud-bandeau {
+  position: absolute; left: 50%; top: 8px; transform: translateX(-50%); max-width: calc(100% - 340px);
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; text-align: center; gap: 0 10px; padding: 6px 16px; border-radius: 16px;
+  background: rgba(16, 22, 40, .8); border: 2px solid rgba(255, 255, 255, .25); text-shadow: var(--contour);
+}
+.hud-bandeau[hidden] { display: none; }
+.hud-bandeau b { font-family: var(--font-display); font-size: 1.2rem; font-weight: 400; }
+.hud-bandeau span { font-size: .95rem; font-weight: 700; }
+.en-pose .hud-hc, .en-pose .hud-hg, .en-pose .hud-bg, .en-pose .hud-bd, .en-pose .hud-actions, .en-pose .hud-etiquette, .en-pose .hud-guide { display: none; }
+
+/* messages et guide */
+.hud-toast {
+  position: absolute; left: 50%; top: 66px; transform: translateX(-50%); margin: 0; max-width: min(560px, 52%); pointer-events: none;
+  padding: 10px 18px; border-radius: 16px; background: rgba(16, 22, 40, .84); border: 2px solid rgba(255, 255, 255, .2);
+  text-align: center; font-size: 1.08rem; line-height: 1.3; text-shadow: 0 1px 0 #000;
+}
+.hud-toast small { font-size: .95rem; color: #ffe9a6; font-style: italic; }
+.hud-toast[hidden] { display: none; }
+.en-pose .hud-toast { top: 58px; }
+.hud-guide {
+  position: absolute; left: calc(var(--bord-g) + 172px); bottom: 8px; display: flex; align-items: flex-end; gap: 8px; max-width: min(440px, calc(100% - 172px - 176px - var(--bord-g) - var(--bord-d))); cursor: pointer;
+}
+.hud-guide[hidden] { display: none; }
+.guide-tete {
+  flex: none; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; overflow: hidden;
+  background: radial-gradient(circle at 50% 35%, #fff8e1, #f2d7a0); border: 3px solid #4e2a0c; box-shadow: 0 4px 0 #4e2a0c;
+}
+.guide-tete .sprite { transform: translateY(4px); }
+.hud-guide p {
+  position: relative; margin: 0 0 10px; padding: 10px 16px; border-radius: 18px; background: #fffaf0; color: #2a1a08;
+  border: 3px solid #4e2a0c; box-shadow: 0 4px 0 #4e2a0c; font-size: 1.08rem; line-height: 1.3; font-weight: 700;
+}
+.hud-guide p::before { content: ""; position: absolute; left: -12px; bottom: 14px; border: 8px solid transparent; border-right-color: #4e2a0c; border-left: 0; border-width: 9px 12px 9px 0; }
+.hud-guide p svg.en-ligne { display: inline-block; vertical-align: -3px; color: #e0a800; }
+.guide-fermer { position: absolute; top: -10px; right: -8px; width: 36px; height: 36px; border-radius: 50%; border: 2px solid #4e2a0c; background: #fff; color: #4e2a0c; font-size: 16px; display: grid; place-items: center; cursor: pointer; }
+
+/* icônes et ressources qui volent vers les compteurs */
+.vol { position: absolute; z-index: 40; pointer-events: none; width: 30px; height: 30px; display: grid; place-items: center; font-size: 30px; }
+
+/* prix */
+.prix { display: inline-flex; align-items: center; gap: 2px; border-radius: 10px; padding: 0 6px 0 2px; font-weight: 700; background: rgba(0, 0, 0, .07); color: #2a1a08; }
+.prix.manque { color: #d0261a; }
+.prix .ic-etoile { padding: 0 2px; }
+
+/* ---------- Fenêtres ---------- */
+.ile-fenetre {
+  position: absolute; inset: 0; z-index: 50; display: grid; place-items: center; padding: 8px max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
+  background: rgba(8, 14, 30, .58);
+}
+.ile-fenetre[hidden] { display: none; }
+.panneau {
+  position: relative; width: min(560px, 100%); max-height: 100%; display: flex; flex-direction: column; overflow: hidden;
+  background: #fdf3dc; color: #3a2410; border: 4px solid #4e2a0c; border-radius: 22px; font-weight: 400;
+  box-shadow: inset 0 0 0 3px #f6dcae, 0 8px 0 #2b1606, 0 16px 40px rgba(0, 0, 0, .45);
+}
+.large .panneau { width: min(1000px, 100%); }
+.panneau > header {
+  flex: none; position: relative; padding: 10px 64px; text-align: center;
+  background: linear-gradient(180deg, #e9a75a, #b8662a); border-bottom: 4px solid #4e2a0c; box-shadow: inset 0 3px 0 rgba(255, 255, 255, .35);
+}
+.panneau h3 { margin: 0; font-family: var(--font-display); font-size: 1.45rem; color: #fff; text-shadow: var(--contour); }
+.fermer {
+  --c1: #ff8a7a; --c2: #d13a2a; --c3: #6e130a;
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 48px; height: 48px; border-radius: 50%; cursor: pointer;
+  border: 3px solid var(--c3); background: radial-gradient(circle at 50% 30%, var(--c1), var(--c2) 70%); color: #fff; font-size: 20px;
+  display: grid; place-items: center; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .4), 0 3px 0 var(--c3);
+}
+.panneau-corps { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 14px 18px; font-size: 1.1rem; line-height: 1.4; }
+.panneau-corps p { margin: 0 0 10px; }
+.panneau > footer { flex: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; padding: 4px 16px 16px; }
+:where(.gros) { --c1: #f2f4f8; --c2: #c5ccd8; --c3: #4a5468; }
+.gros {
+  min-height: 56px; min-width: 130px; padding: 0 22px; border-radius: 16px; border: 3px solid var(--c3); cursor: pointer;
+  background: linear-gradient(180deg, var(--c1), var(--c2)); color: #fff; font-size: 1.15rem; font-weight: 700; text-shadow: var(--contour);
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, .45), 0 4px 0 var(--c3);
+}
+.gros.gris { color: #2a3142; text-shadow: none; }
+.gros:disabled { filter: grayscale(1) opacity(.55); cursor: default; }
+.petit { font-size: .98rem; color: #7a5a3a; }
+.alerte-texte { color: #c0261a; font-weight: 700; }
+.prix-ligne { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; font-size: 1.3rem; margin: 8px 0; }
+.prix-ligne .prix { padding: 2px 10px 2px 4px; background: #fff; border: 2px solid #e2c68f; }
+
+/* fiche d'un bâtiment */
+.fiche-tete { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+.fiche-tete > .tuile, .fiche-tete > .sprite { border-radius: 12px; box-shadow: 0 0 0 3px #e2c68f; }
+.fiche-tete p { margin: 0; }
+.fiche-lignes { list-style: none; margin: 0 0 8px; padding: 0; }
+.fiche-lignes li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 4px; border-bottom: 2px dashed #ecd6aa; }
+.fiche-lignes li b { text-align: right; }
+.fiche-lignes li i { font-style: normal; color: #a07a4a; padding: 0 4px; }
+.fiche-lignes li em { font-style: normal; color: #2f8a16; }
+.fiche-lignes li.alerte { color: #c0261a; }
+.fiche-sous { font-weight: 700; margin-top: 6px; }
+.aime { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.aime li { display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 12px; background: #fff; border: 2px solid #ecd6aa; }
+.aime li.ok { border-color: #3a9b1c; background: #ecfbe2; }
+.aime li b { color: #2f8a16; }
+
+/* fenêtres en deux colonnes (à l'horizontale, il y a de la place en largeur) */
+.deux-colonnes { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-items: start; }
+.deux-colonnes > .gauche { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.deux-colonnes .fiche-desc { max-width: 190px; text-align: center; font-size: 1rem; margin: 0; }
+.large-moyen .panneau { width: min(720px, 100%); }
+
+/* amélioration */
+.evolution { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 6px; }
+.evolution.verticale { flex-direction: column; gap: 2px; }
+.evolution.verticale .evolution-fleche { transform: rotate(90deg); font-size: 30px; }
+.evolution figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; border-radius: 16px; background: #fff; border: 3px solid #ecd6aa; }
+.evolution figure.suivant { border-color: #3a9b1c; box-shadow: 0 0 0 4px rgba(58, 155, 28, .2); }
+.evolution figcaption { font-weight: 700; }
+.evolution-fleche { font-size: 40px; color: #3a9b1c; }
+
+/* bâtisseurs */
+.liste-chantiers { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.liste-chantiers li { display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 14px; background: #fff; border: 2px solid #ecd6aa; }
+.liste-chantiers li > span { flex: 1; display: flex; flex-direction: column; }
+.liste-chantiers small { color: #7a5a3a; }
+.petit-bouton {
+  min-height: 52px; min-width: 64px; padding: 0 12px; border-radius: 14px; border: 3px solid var(--c3); cursor: pointer; color: #fff; font-weight: 700;
+  background: linear-gradient(180deg, var(--c1), var(--c2)); text-shadow: var(--contour); display: inline-flex; align-items: center; gap: 4px; font-size: 1.05rem;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .4), 0 3px 0 var(--c3);
+}
+
+/* progression */
+.jauge-grande { position: relative; height: 30px; border-radius: 15px; background: #e9d6b0; border: 3px solid #4e2a0c; overflow: hidden; margin: 6px 0 12px; }
+.jauge-grande i { display: block; height: 100%; background: linear-gradient(180deg, #fff3a0, #ffc21a 60%, #e08a00); }
+.jauge-grande span { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 700; color: #fff; text-shadow: var(--contour); }
+.paliers { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.paliers li { display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 6px; border-radius: 14px; background: #fff; border: 2px solid #ecd6aa; }
+.paliers li > span { flex: 1; display: flex; flex-direction: column; line-height: 1.2; }
+.paliers li small { color: #7a5a3a; }
+.paliers li em { font-style: normal; font-weight: 700; min-width: 40px; height: 40px; border-radius: 20px; display: grid; place-items: center; background: #ffe9a6; color: #6e4300; padding: 0 8px; }
+.paliers li.ok { background: #ecfbe2; border-color: #9ad27a; }
+.paliers li.ok em { background: #3a9b1c; color: #fff; font-size: 22px; }
+.paliers li:not(.ok) .tuile, .paliers li:not(.ok) .sprite { filter: grayscale(.8) brightness(.9); }
+.mini-ile { border-radius: 10px; overflow: hidden; }
+
+/* « Nouveau ! » */
+.panneau.nouveau .panneau-corps { position: relative; text-align: center; overflow: hidden; }
+.panneau.nouveau .panneau-corps > *:not(.rayons) { position: relative; }
+.rayons {
+  position: absolute; left: 50%; top: 70px; width: 600px; height: 600px; margin: -300px 0 0 -300px; pointer-events: none;
+  background: repeating-conic-gradient(rgba(255, 200, 60, .22) 0 10deg, transparent 10deg 20deg); border-radius: 50%;
+}
+.nouveau-image { display: grid; place-items: center; margin: 6px auto 8px; filter: drop-shadow(0 6px 0 rgba(78, 42, 12, .3)); }
+.nouveau-nom { font-family: var(--font-display); font-size: 1.6rem; color: #6e3205; }
+
+/* ---------- La boutique ---------- */
+.panneau.boutique { height: 100%; }
+.panneau.boutique .panneau-corps { display: flex; flex-direction: row; gap: 12px; padding: 10px 12px 12px; overflow: hidden; }
+.onglets { display: flex; flex-direction: column; gap: 8px; flex: none; width: 150px; }
+.onglets button {
+  min-height: 56px; padding: 0 12px; border-radius: 14px; border: 3px solid #4e2a0c; background: #f0dcb4; color: #4e2a0c; cursor: pointer; text-align: left;
+  font-size: 1.1rem; font-weight: 700;
+}
+.onglets button[aria-selected="true"] { background: linear-gradient(180deg, #ffd47a, #f2a33a); color: #fff; text-shadow: var(--contour); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .4); }
+.rayon { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; align-items: stretch; }
+.rayon .defiler { position: absolute; top: 50%; z-index: 2; transform: translateY(-50%); }
+.rayon .defiler.gauche { left: -6px; }
+.rayon .defiler.droite { right: -6px; }
+.rayon .defiler:disabled { opacity: 0; pointer-events: none; }
+.defiler {
+  --c1: #ffd47a; --c2: #e0701a; --c3: #6e3205;
+  flex: none; align-self: center; width: 52px; height: 52px; border-radius: 50%; border: 3px solid var(--c3); cursor: pointer;
+  background: radial-gradient(circle at 50% 30%, var(--c1), var(--c2)); color: #fff; font-size: 24px; display: grid; place-items: center;
+  box-shadow: 0 3px 0 var(--c3);
+}
+.cartes { flex: 1; min-width: 0; display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 4px 2px 8px; scrollbar-width: none; }
+.cartes::-webkit-scrollbar { display: none; }
+.carte {
+  position: relative; flex: 0 0 188px; scroll-snap-align: start; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px 8px 0; border-radius: 18px; border: 3px solid #c99a5b; background: #fff8e8; color: #3a2410; cursor: pointer; text-align: center;
+  box-shadow: 0 4px 0 #c99a5b; overflow: hidden; font-weight: 400;
+}
+.carte-image { width: 100%; flex: none; display: grid; place-items: center; padding: 6px 0; border-radius: 12px; background: radial-gradient(circle at 50% 40%, #e8f6ff, #b9dcff); }
+.carte-image.grand-ic { font-size: 70px; color: #3a9b1c; min-height: 96px; }
+.carte-image.grand-ic.or { color: #f2b200; }
+.carte-nom { font-weight: 700; font-size: 1.1rem; line-height: 1.15; }
+.carte-infos { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 8px; font-size: .9rem; font-weight: 700; color: #6e4a20; }
+.carte-infos > span { display: inline-flex; align-items: center; gap: 3px; }
+.carte-infos svg { color: #c98a00; width: 16px; height: 16px; }
+.carte-desc { font-size: .92rem; line-height: 1.25; color: #6e5030; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.carte-nb { font-size: .82rem; font-weight: 700; color: #2f8a16; }
+.carte-prix {
+  margin-top: auto; align-self: stretch; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px; padding: 8px 4px;
+  background: linear-gradient(180deg, #8ef05a, #3a9b1c); border-top: 3px solid #1d5a0a; margin-inline: -8px; font-size: 1.05rem;
+}
+.carte-prix .prix { background: rgba(255, 255, 255, .92); }
+.carte-prix small { color: #fff; text-shadow: var(--contour); }
+.carte-prix > b { color: #fff; text-shadow: var(--contour); }
+.carte.cher .carte-prix { background: linear-gradient(180deg, #f4e4c4, #e2c68f); border-top-color: #a07a4a; }
+.carte.verrou { cursor: default; }
+.carte.verrou .carte-image > * { filter: grayscale(1) brightness(.7); }
+.carte.verrou .carte-prix { background: linear-gradient(180deg, #8a93a6, #5a6274); border-top-color: #2a3142; color: #fff; text-shadow: var(--contour); gap: 6px; }
+.carte.verrou .carte-prix svg { width: 20px; height: 20px; }
+
+/* jouer */
+.jeux { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.jeu {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 8px; border-radius: 16px; cursor: pointer; text-align: center;
+  background: #fff8e8; border: 3px solid #c99a5b; box-shadow: 0 4px 0 #c99a5b; color: #3a2410; font-weight: 400;
+}
+.jeu > span:not(.jeu-ic) { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.jeu b { font-size: 1.15rem; }
+.jeu small { font-size: .9rem; color: #7a5a3a; line-height: 1.2; }
+.jeu-ic { width: 64px; height: 64px; display: grid; place-items: center; }
+.jeu-ic svg { width: 64px; height: 64px; }
+.jeu-ic.aventure { border-radius: 16px; background: linear-gradient(180deg, #ffe680, #f2b200); color: #fff; font-size: 44px; border: 3px solid #7a4a00; }
+
+/* un bouton que le guide montre du doigt */
+.appel { animation: ile-appel 1.1s ease-in-out infinite; }
+@keyframes ile-appel { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 220, 80, .9), 0 5px 0 var(--c3, #4e2a0c); } 50% { box-shadow: 0 0 0 12px rgba(255, 220, 80, 0), 0 5px 0 var(--c3, #4e2a0c); } }
+
+/* ---------- Petits écrans ---------- */
+@container scene (max-width: 760px) {
+  .niveau-info { min-width: 0; padding-right: 10px; }
+  .niveau-info small { display: none; }
+  .capsule { min-width: 112px; font-size: 1.1rem; }
+  .action { width: 82px; }
+  .hud-actions { gap: 2px; }
+  .action-rond { width: 58px; height: 58px; font-size: 28px; }
+  .ruban span { font-size: 1.05rem; padding: 0 4px; }
+  .choix-actif .hud-bg #ile-conseil, .choix-actif .hud-bd #ile-ramasser { display: none; }
+  .hud-guide { left: calc(var(--bord-g) + 172px); max-width: calc(100% - 172px - 176px - var(--bord-g) - var(--bord-d)); }
+  .hud-guide .guide-tete { display: none; }
+  .hud-guide p::before { display: none; }
+  .hud-guide p { margin-bottom: 0; font-size: 1rem; }
+}
+@container scene (max-width: 640px) {
+  .niveau-info { display: none; }
+  .gros-bouton { width: 78px; height: 74px; }
+  .gros-bouton .gb-ic { font-size: 32px; }
+}
+@container scene (max-height: 400px) {
+  .jeux { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .jeu { padding: 6px; flex-direction: row; text-align: left; gap: 8px; }
+  .jeu-ic, .jeu-ic svg { width: 48px; height: 48px; flex: none; }
+  .jeu-ic.aventure { font-size: 32px; }
+  .jeu small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .intro-jouer { display: none; }
+  .carte-image .tuile, .carte-image .sprite { --ts: 64px !important; }
+  .carte-image.grand-ic { min-height: 70px; font-size: 56px; }
+  .onglets { width: 132px; }
+  .evolution .tuile, .evolution .sprite, .fiche-tete .tuile, .fiche-tete .sprite { --ts: 60px !important; }
+  .evolution figure { padding: 4px 8px; }
+  .carte-image { padding: 2px 0; }
+  .panneau-corps { padding: 10px 14px; }
+  .hud-toast { font-size: 1rem; padding: 8px 14px; }
+}
 
 @media (prefers-reduced-motion: no-preference) {
-  .beaute .barre i { transition: width .6s cubic-bezier(.2, .8, .2, 1); }
-  .case.meilleur::after { animation: ile-pulse 1.1s ease-in-out infinite; }
-  .recolte { animation: bulle-flotte 2.4s ease-in-out infinite; }
-  .recolte.plein { animation: bulle-flotte 1.2s ease-in-out infinite; }
-  @keyframes ile-pulse { 50% { box-shadow: 0 0 2px var(--gold); } }
-  @keyframes bulle-flotte { 50% { translate: 0 -3px; } }
-
-  .etre.marche > i { animation: marche .45s steps(2) infinite; }
-  .etre.porte.marche > i { animation: porte .5s steps(2) infinite; }
-  .etre.travaille > i { animation: travaille .5s steps(2) infinite; }
-  .etre.mouton.marche > i, .etre.mouton.travaille > i { animation: mouton .7s steps(2) infinite; }
-  .etre.poule.marche > i, .etre.poule.travaille > i { animation: poule .45s steps(2) infinite; }
-  .etre.mouette > i { animation: mouette .5s steps(2) infinite; }
-  @keyframes marche { from { background-position-x: calc(var(--ts) * -1); } to { background-position-x: calc(var(--ts) * -3); } }
-  @keyframes travaille { from { background-position-x: calc(var(--ts) * -3); } to { background-position-x: calc(var(--ts) * -5); } }
-  @keyframes porte { from { background-position-x: calc(var(--ts) * -5); } to { background-position-x: calc(var(--ts) * -7); } }
-  @keyframes mouton { from { background-position-x: 0; } to { background-position-x: calc(var(--ts) * -2); } }
-  @keyframes poule { from { background-position-x: calc(var(--ts) * -2); } to { background-position-x: calc(var(--ts) * -4); } }
-  @keyframes mouette { from { background-position-x: calc(var(--ts) * -4); } to { background-position-x: calc(var(--ts) * -6); } }
-
-  .navire.n1 { animation: traversee 38s linear infinite, tangage 3s ease-in-out infinite; }
-  .navire.n2 { animation: traversee-inverse 46s linear infinite 6s, tangage 3.4s ease-in-out infinite; }
-  @keyframes traversee { from { left: -40px; } to { left: calc(100% + 40px); } }
-  @keyframes traversee-inverse { from { right: -40px; } to { right: calc(100% + 40px); } }
-  @keyframes tangage { 50% { transform: translateY(3px) rotate(-3deg); } }
-  .carte-bat { transition: transform .12s, border-color .2s, box-shadow .2s; }
-  .carte-bat:active:not(:disabled) { transform: scale(.97); }
+  .rayons { animation: ile-tourne 18s linear infinite; }
+  @keyframes ile-tourne { to { transform: rotate(360deg); } }
+  .hud-toast.montre { animation: ile-toast .3s cubic-bezier(.34, 1.56, .64, 1); }
+  @keyframes ile-toast { from { transform: translate(-50%, -12px) scale(.9); opacity: 0; } }
+  .rond, .gros-bouton, .action-rond, .gros, .carte, .jeu, .petit-bouton, .defiler { transition: transform .1s; }
+  .rond:active:not(:disabled), .gros-bouton:active, .action:active .action-rond, .gros:active:not(:disabled), .carte:active, .jeu:active, .petit-bouton:active { transform: scale(.93); }
 }
-@media (prefers-reduced-motion: reduce) { .navire { display: none; } }
+@media (prefers-reduced-motion: reduce) { .appel { animation: none; outline: 4px solid #ffd23f; } }
+
+/* ---------- Sur l'accueil : la grande carte « Mon île », avec une miniature de l'île ---------- */
+.ile-heros {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; width: 100%; margin: 0 0 12px; padding: 14px; cursor: pointer; text-align: left;
+  border-radius: 22px; border: 3px solid #0d2f6e; color: #fff; font: inherit;
+  background: radial-gradient(ellipse at 20% 30%, #8fc8ff, #3b7ee8 55%, #2051b8);
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, .35), 0 5px 0 #0d2f6e, 0 10px 22px rgba(13, 47, 110, .25);
+}
+.ile-heros-mer { flex: none; margin-inline: auto; padding: 6px; border-radius: 16px; background: #639bff; box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .35); }
+.miniature { display: block; image-rendering: pixelated; }
+.ile-heros-texte { flex: 1 1 170px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ile-heros .t-name { color: #fff; font-size: 1.7rem; text-shadow: 0 2px 0 #0d2f6e; }
+.ile-heros .t-desc { color: #e6f1ff; font-weight: 700; }
+.ile-heros-nouvelles { display: flex; flex-wrap: wrap; gap: 4px; }
+.ile-heros-nouvelles span { background: #ffd23f; color: #3a2600; border-radius: 999px; padding: 2px 10px; font-weight: 700; font-size: .95rem; }
+.ile-heros-bouton {
+  align-self: flex-start; margin-top: 6px; padding: 10px 18px; min-height: 48px; display: inline-flex; align-items: center; border-radius: 14px;
+  background: linear-gradient(180deg, #8ef05a, #3a9b1c); border: 3px solid #1d5a0a; font-weight: 700; font-size: 1.1rem;
+  text-shadow: 0 1px 0 #1d5a0a, 0 0 2px #1d5a0a; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .4), 0 3px 0 #1d5a0a;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ile-heros { transition: transform .12s; }
+  .ile-heros:active { transform: scale(.98); }
+}

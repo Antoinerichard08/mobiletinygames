@@ -1,253 +1,248 @@
-// La vie sur l'île : villageois qui vont travailler, animaux, fumée des cheminées, mouettes.
-// Purement décoratif : la production se calcule dans regles.js, avec l'heure.
-// Les déplacements utilisent les Web Animations ; tout s'arrête si l'on demande moins d'animations,
-// et se met en pause quand l'écran n'est pas visible.
-import { mouvementReduit } from '../core/mouvement.js';
-import { cle, coord, terrainDe, estTerre, habitants } from './regles.js';
+// La vie sur l'archipel : villageois qui vont travailler (bâtisseurs sur les chantiers, bûcherons, paysannes),
+// animaux, fumée des cheminées, bateaux et mouettes. Purement décoratif : la production se calcule dans
+// regles.js, avec l'heure. Simulation sans DOM : `maj(dt)` avance tout, le rendu (monde.js) dessine `entites`.
+import { BATIMENTS, cle, coord, estTerre, terrainDe, ilesOuvertes } from './regles.js';
+import { COULOIRS, origine } from './plan.js';
 
-const MAX_HABITANTS = 12;
-const VITESSE = 0.0016; // cases par milliseconde (environ une case toutes les 0,6 s)
-const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
+const MAX_HABITANTS = 10;
+const VITESSE = 1.5; // cases par seconde
 const hasard = (a, b) => a + Math.random() * (b - a);
 const choisir = (liste) => liste[Math.floor(Math.random() * liste.length)];
+/** Un nombre stable entre 0 et 1 pour une chaîne (les poules ne changent pas de maison à chaque dessin). */
+const empreinte = (s) => { let h = 2166136261; for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return ((h >>> 0) % 1000) / 1000; };
 
-/**
- * @param {HTMLElement} couche  calque posé sur la grille de l'île
- * @param {() => { ile, ts, origine: {x0, y0} }} contexte  l'île affichée et la taille des cases
- */
-export function creerVie(couche, contexte) {
-  let actif = true;
-  let jeton = 0; // change à chaque reconstruction : les anciennes boucles s'arrêtent d'elles-mêmes
-  const minuteries = new Set();
+const MAISONS = new Set(['maison', 'village', 'hameau', 'chateau', 'ferme']);
+const PASSAGE = new Set(['champ', 'fleurs', 'champignons', 'buisson']);
 
-  const centre = (x, y) => {
-    const { ts, origine } = contexte();
-    return { px: (x - origine.x0 + 1.5) * ts, py: (y - origine.y0 + 1.5) * ts };
-  };
-
-  async function pause() {
-    while (actif && document.hidden) await attendre(1000);
-  }
-
-  /** Crée un personnage (sprite animé) dans le calque. */
-  function creer(classe, variante, x, y) {
-    const { ts } = contexte();
-    const el = document.createElement('span');
-    el.className = `etre ${classe}`;
-    el.style.setProperty('--ts', `${ts}px`);
-    el.style.setProperty('--v', variante);
-    el.innerHTML = '<i></i>';
-    const { px, py } = centre(x, y);
-    el.style.transform = `translate(${px - ts / 2}px, ${py - ts / 2}px)`;
-    el.dataset.x = x; el.dataset.y = y;
-    el.style.zIndex = String(10 + y * 2);
-    couche.append(el);
-    return el;
-  }
-
-  /** Marche de case en case jusqu'à (x, y), en ligne brisée (d'abord en largeur, puis en hauteur). */
-  async function marcher(el, x, y, mon) {
-    const { ts } = contexte();
-    let cx = Number(el.dataset.x), cy = Number(el.dataset.y);
-    const etapes = [];
-    while (cx !== x) { cx += Math.sign(x - cx); etapes.push([cx, cy]); }
-    while (cy !== y) { cy += Math.sign(y - cy); etapes.push([cx, cy]); }
-    el.classList.add('marche');
-    for (const [nx, ny] of etapes) {
-      if (!actif || mon !== jeton) return false;
-      await pause();
-      const de = centre(Number(el.dataset.x), Number(el.dataset.y)), vers = centre(nx, ny);
-      el.classList.toggle('gauche', vers.px < de.px);
-      const anim = el.animate([
-        { transform: `translate(${de.px - ts / 2}px, ${de.py - ts / 2}px)` },
-        { transform: `translate(${vers.px - ts / 2}px, ${vers.py - ts / 2}px)` },
-      ], { duration: 1 / VITESSE, easing: 'linear', fill: 'forwards' });
-      try { await anim.finished; } catch { return false; }
-      el.style.transform = `translate(${vers.px - ts / 2}px, ${vers.py - ts / 2}px)`;
-      anim.cancel();
-      el.dataset.x = nx; el.dataset.y = ny;
-      el.style.zIndex = String(10 + ny * 2);
+/** Les lieux utiles d'une île. */
+function lieux(ile) {
+  const out = { terre: [], forets: [], chantiers: [], champs: [], maisons: [], cabanes: [] };
+  for (let y = ile.ext.y0; y <= ile.ext.y1; y++) for (let x = ile.ext.x0; x <= ile.ext.x1; x++) {
+    const k = cle(x, y), c = ile.cases[k], t = terrainDe(ile, x, y);
+    out.terre.push([x, y]);
+    if (t === 'foret' && !c) out.forets.push([x, y]);
+    if (c?.chantier || ile.travaux[k]) out.chantiers.push([x, y]);
+    if (c && c.niveau > 0) {
+      if (c.type === 'champ' || c.type === 'ferme') out.champs.push([x, y]);
+      if (MAISONS.has(c.type)) out.maisons.push([x, y]);
+      if (c.type === 'hameau') out.cabanes.push([x, y]);
     }
-    el.classList.remove('marche');
-    return true;
+  }
+  return out;
+}
+
+const marchable = (ile, x, y) => {
+  if (!estTerre(ile, x, y) || ile.travaux[cle(x, y)]) return false;
+  const c = ile.cases[cle(x, y)];
+  if (c && !PASSAGE.has(c.type)) return false;
+  return ['herbe', 'foret'].includes(terrainDe(ile, x, y));
+};
+
+/** Chemin de case en case (largeur d'abord) ; la dernière case peut être un bâtiment. Sinon : en ligne brisée. */
+function chemin(ile, de, vers) {
+  const [dx, dy] = de, [vx, vy] = vers;
+  if (dx === vx && dy === vy) return [];
+  const precedent = new Map([[cle(dx, dy), null]]);
+  const file = [[dx, dy]];
+  while (file.length) {
+    const [x, y] = file.shift();
+    for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+      const k = cle(nx, ny);
+      if (precedent.has(k)) continue;
+      const arrivee = nx === vx && ny === vy;
+      if (!arrivee && !marchable(ile, nx, ny)) continue;
+      precedent.set(k, [x, y]);
+      if (arrivee) {
+        const out = [];
+        for (let p = [nx, ny]; p && !(p[0] === dx && p[1] === dy); p = precedent.get(cle(...p))) out.unshift(p);
+        return out;
+      }
+      file.push([nx, ny]);
+    }
+  }
+  const out = [];
+  let x = dx, y = dy;
+  while (x !== vx) { x += Math.sign(vx - x); out.push([x, y]); }
+  while (y !== vy) { y += Math.sign(vy - y); out.push([x, y]); }
+  return out;
+}
+
+/** Une case marchable à côté de (x, y), pour se tenir près d'un arbre ou d'un chantier. */
+function aCote(ile, x, y) {
+  const options = [[x - 1, y], [x + 1, y], [x, y + 1], [x, y - 1]].filter(([a, b]) => marchable(ile, a, b));
+  return options.length ? choisir(options) : [x, y];
+}
+const plusProche = (liste, x, y) => liste.reduce((m, p) => (!m || Math.abs(p[0] - x) + Math.abs(p[1] - y) < Math.abs(m[0] - x) + Math.abs(m[1] - y) ? p : m), null);
+
+const VARIANTE = { bucheron: 1, paysanne: 2, macon: 3, promeneur: 0, promeneuse: 4 };
+
+export function creerVie() {
+  /** Tous les êtres : { genre, n, x, y (coordonnées de l'île, centre des pieds), ... } ; bateaux et mouettes en coordonnées du monde. */
+  let entites = [];
+  let fumees = [];
+  let signature = '';
+  let horloge = 0;
+  let E = null;
+
+  function nouvelEtre(genre, n, x, y, extra = {}) {
+    return { genre, n, x: x + 0.5, y: y + 0.62, chemin: [], etat: 'attend', attente: hasard(0.2, 2.5), gauche: false, phase: Math.random(), ...extra };
   }
 
-  async function action(el, classe, ms, mon) {
-    el.classList.add(classe);
-    await attendre(ms);
-    el.classList.remove(classe);
-    return actif && mon === jeton;
+  /** (Re)place les habitants et les animaux selon ce qui est construit, en gardant ceux qui sont déjà là. */
+  function peupler(etat) {
+    E = etat;
+    const ouvertes = ilesOuvertes(E);
+    const sig = E.iles.slice(0, ouvertes).map((ile) => `${JSON.stringify(ile.ext)}|${Object.entries(ile.cases).map(([k, c]) => `${k}:${c.type}:${c.niveau}:${c.chantier ? 1 : 0}`).join(';')}|${Object.keys(ile.travaux).join(';')}|${JSON.stringify(ile.terrain)}`).join('#');
+    if (sig === signature) return;
+    signature = sig;
+    const anciens = entites;
+    const garder = (genre, n, rang) => anciens.find((a) => a.genre === genre && a.n === n && a.rang === rang && !a.pris);
+    const suivants = [];
+    for (let n = 0; n < ouvertes; n++) {
+      const ile = E.iles[n], L = lieux(ile);
+      let nb = 0;
+      for (const c of Object.values(ile.cases)) if (BATIMENTS[c.type] && c.niveau > 0) nb += BATIMENTS[c.type].habitants * c.niveau;
+      nb = Math.min(MAX_HABITANTS, Math.max(n === 0 || Object.keys(ile.cases).length ? 1 : 0, nb, L.chantiers.length));
+      const metiers = ['macon'];
+      if (L.cabanes.length) metiers.push('bucheron');
+      if (L.champs.length) metiers.push('paysanne');
+      metiers.push('promeneur', 'promeneuse');
+      for (let rang = 0; rang < nb; rang++) {
+        const metier = metiers[rang % metiers.length];
+        let h = garder('habitant', n, rang);
+        if (h) { h.pris = true; h.metier = metier; h.variante = VARIANTE[metier]; h.chemin = []; h.etat = 'attend'; h.attente = hasard(0.1, 1); }
+        else {
+          const [x, y] = L.maisons.length ? choisir(L.maisons) : choisir(L.terre);
+          h = nouvelEtre('habitant', n, x, y, { rang, metier, variante: VARIANTE[metier] });
+        }
+        // quelqu'un resté sur une case devenue un bâtiment ressort à côté
+        const [cx, cy] = [Math.floor(h.x), Math.floor(h.y)];
+        if (!estTerre(ile, cx, cy)) { const [x, y] = choisir(L.terre); h.x = x + 0.5; h.y = y + 0.62; }
+        suivants.push(h);
+      }
+      // animaux : moutons à la ferme, poules près de certaines maisons
+      let rangAnimal = 0;
+      for (const [k, c] of Object.entries(ile.cases)) {
+        if (c.niveau === 0) continue;
+        const [x, y] = coord(k);
+        const ajouter = (genre) => {
+          let a = garder(genre, n, `${k}-${rangAnimal}`);
+          if (a) a.pris = true; else a = nouvelEtre(genre, n, x, y, { rang: `${k}-${rangAnimal}`, maison: [x, y] });
+          a.maison = [x, y];
+          rangAnimal++;
+          suivants.push(a);
+        };
+        if (c.type === 'ferme') for (let i = 0; i < Math.min(3, c.niveau + 1); i++) ajouter('mouton');
+        if ((c.type === 'maison' || c.type === 'hameau') && empreinte(k) < 0.6) ajouter('poule');
+      }
+    }
+    // les bateaux et les mouettes restent
+    for (const a of anciens) if (a.genre === 'bateau' || a.genre === 'mouette') suivants.push(a);
+    if (!suivants.some((a) => a.genre === 'bateau')) {
+      COULOIRS.forEach((c, i) => suivants.push({ genre: 'bateau', modele: i === 0 ? 0 : 4, p: Math.random(), sens: 1, vitesse: hasard(0.35, 0.5), couloir: c, x: 0, y: 0 }));
+    }
+    for (const a of suivants) delete a.pris;
+    entites = suivants;
   }
 
   // ---------- Ce que fait chaque villageois ----------
 
-  function lieux() {
-    const { ile } = contexte();
-    const out = { terre: [], forets: [], chantiers: [], champs: [], maisons: [], cabanes: [] };
-    for (let y = ile.ext.y0; y <= ile.ext.y1; y++) for (let x = ile.ext.x0; x <= ile.ext.x1; x++) {
-      const c = ile.cases[cle(x, y)], t = terrainDe(ile, x, y);
-      out.terre.push([x, y]);
-      if (t === 'foret' && !c) out.forets.push([x, y]);
-      if (c?.chantier || ile.travaux[cle(x, y)]) out.chantiers.push([x, y]);
-      if (c && c.niveau > 0) {
-        if (c.type === 'champ' || c.type === 'ferme') out.champs.push([x, y]);
-        if (c.type === 'maison' || c.type === 'village' || c.type === 'hameau' || c.type === 'chateau') out.maisons.push([x, y]);
-        if (c.type === 'hameau') out.cabanes.push([x, y]);
-      }
+  function decider(h) {
+    const ile = E.iles[h.n], L = lieux(ile);
+    const x = Math.floor(h.x), y = Math.floor(h.y);
+    const aller = (cible, ensuite, duree) => { h.chemin = chemin(ile, [x, y], cible); h.ensuite = ensuite; h.duree = duree; h.etat = 'marche'; };
+    if (L.chantiers.length && (h.metier === 'macon' || Math.random() < 0.2)) {
+      const c = plusProche(L.chantiers, x, y);
+      h.regarde = c;
+      return aller(aCote(ile, ...c), 'travaille', hasard(3, 6));
     }
-    return out;
-  }
-  const plusProche = (liste, x, y) => liste.reduce((m, p) => (!m || Math.abs(p[0] - x) + Math.abs(p[1] - y) < Math.abs(m[0] - x) + Math.abs(m[1] - y) ? p : m), null);
-  /** Une case de terre à côté de (x, y), pour se tenir près d'un arbre ou d'un chantier. */
-  function aCote(x, y) {
-    const { ile } = contexte();
-    const options = [[x - 1, y], [x + 1, y], [x, y + 1], [x, y - 1]].filter(([a, b]) => estTerre(ile, a, b));
-    return options.length ? choisir(options) : [x, y];
+    if (h.metier === 'bucheron' && L.forets.length && !h.charge) {
+      const arbre = plusProche(L.forets, x, y);
+      h.regarde = arbre;
+      return aller(aCote(ile, ...arbre), 'coupe', hasard(2.5, 4));
+    }
+    if (h.metier === 'bucheron' && h.charge) {
+      const maison = plusProche(L.cabanes.length ? L.cabanes : L.maisons, x, y) || [x, y];
+      return aller(maison, 'depose', 0.6);
+    }
+    if (h.metier === 'paysanne' && L.champs.length) return aller(choisir(L.champs), 'travaille', hasard(2.5, 5));
+    const but = Math.random() < 0.35 && L.maisons.length ? choisir(L.maisons) : choisir(L.terre);
+    return aller(but, 'attend', hasard(1, 3));
   }
 
-  async function vivre(el, metier, mon) {
-    await attendre(hasard(200, 2500));
-    while (actif && mon === jeton) {
-      await pause();
-      const L = lieux();
-      const x = Number(el.dataset.x), y = Number(el.dataset.y);
-      let fait = false;
-      if (L.chantiers.length && (metier === 'macon' || Math.random() < 0.25)) {
-        const cible = plusProche(L.chantiers, x, y);
-        if (await marcher(el, ...aCote(...cible), mon)) await action(el, 'travaille', hasard(3000, 6000), mon);
-        fait = true;
-      } else if (metier === 'bucheron' && L.forets.length) {
-        const arbre = plusProche(L.forets, x, y);
-        if (await marcher(el, ...aCote(...arbre), mon) && await action(el, 'travaille', hasard(2500, 4000), mon)) {
-          el.classList.add('porte');
-          const maison = plusProche(L.cabanes.length ? L.cabanes : L.maisons, x, y) || [x, y];
-          await marcher(el, ...maison, mon);
-          el.classList.remove('porte');
+  function majHabitant(h, dt) {
+    if (h.etat === 'marche') {
+      const suivant = h.chemin[0];
+      if (!suivant) { h.etat = h.ensuite; h.attente = h.duree; if (h.regarde) h.gauche = h.regarde[0] + 0.5 < h.x; return; }
+      const tx = suivant[0] + 0.5, ty = suivant[1] + 0.62;
+      const dx = tx - h.x, dy = ty - h.y, d = Math.hypot(dx, dy), pas = (h.genre === 'habitant' ? VITESSE : VITESSE * 0.5) * dt;
+      if (Math.abs(dx) > 0.01) h.gauche = dx < 0;
+      if (d <= pas) { h.x = tx; h.y = ty; h.chemin.shift(); } else { h.x += (dx / d) * pas; h.y += (dy / d) * pas; }
+      return;
+    }
+    h.attente -= dt;
+    if (h.attente > 0) return;
+    if (h.etat === 'coupe') h.charge = true;
+    if (h.etat === 'depose') h.charge = false;
+    h.regarde = null;
+    if (h.genre === 'habitant') return decider(h);
+    // animaux : de petits tours autour de la maison
+    const ile = E.iles[h.n];
+    const [x, y] = aCote(ile, ...h.maison);
+    h.chemin = chemin(ile, [Math.floor(h.x), Math.floor(h.y)], [x, y]).slice(0, 2);
+    h.ensuite = 'broute';
+    h.duree = hasard(1.5, 4);
+    h.etat = 'marche';
+  }
+
+  function majBateau(b, dt) {
+    const { de, vers } = b.couloir;
+    const longueur = Math.hypot(vers[0] - de[0], vers[1] - de[1]);
+    b.p += (b.sens * b.vitesse * dt) / longueur;
+    if (b.p > 1) { b.p = 1; b.sens = -1; }
+    if (b.p < 0) { b.p = 0; b.sens = 1; }
+    b.x = de[0] + (vers[0] - de[0]) * b.p;
+    b.y = de[1] + (vers[1] - de[1]) * b.p;
+    b.gauche = (vers[0] - de[0]) * b.sens < 0 || (vers[0] === de[0] && b.sens < 0);
+  }
+
+  /** Avance la vie de `dt` secondes. `vue` : le rectangle du monde à l'écran (pour les mouettes). */
+  function maj(dt, vue) {
+    if (!E) return;
+    horloge += dt;
+    for (const a of entites) {
+      if (a.genre === 'bateau') majBateau(a, dt);
+      else if (a.genre === 'mouette') { a.x += a.vx * dt; a.y += a.vy * dt; a.vie -= dt; }
+      else majHabitant(a, dt);
+    }
+    entites = entites.filter((a) => a.genre !== 'mouette' || a.vie > 0);
+    // une mouette traverse la vue de temps en temps
+    if (vue && Math.random() < dt / 9 && entites.filter((a) => a.genre === 'mouette').length < 2) {
+      const versDroite = Math.random() < 0.5, largeur = vue.x1 - vue.x0;
+      entites.push({ genre: 'mouette', x: versDroite ? vue.x0 - 1 : vue.x1 + 1, y: hasard(vue.y0, vue.y0 + (vue.y1 - vue.y0) * 0.6), vx: (versDroite ? 1 : -1) * largeur / hasard(8, 12), vy: hasard(-0.15, 0.15), vie: 14, gauche: !versDroite, phase: Math.random() });
+    }
+    // fumée des cheminées
+    const ouvertes = ilesOuvertes(E);
+    for (let n = 0; n < ouvertes; n++) {
+      const ile = E.iles[n], { ox, oy } = origine(ile, n);
+      for (const [k, c] of Object.entries(ile.cases)) {
+        if (c.niveau === 0 || !MAISONS.has(c.type) || c.type === 'ferme') continue;
+        if (Math.random() < dt / 2.8) {
+          const [x, y] = coord(k);
+          fumees.push({ x: ox + x + 0.66 + hasard(-0.05, 0.05), y: oy + y + 0.12, age: 0, derive: hasard(-0.2, 0.2) });
         }
-        fait = true;
-      } else if (metier === 'paysanne' && L.champs.length) {
-        const champ = choisir(L.champs);
-        if (await marcher(el, ...champ, mon)) await action(el, 'travaille', hasard(2500, 5000), mon);
-        fait = true;
       }
-      if (!fait) {
-        const but = Math.random() < 0.4 && L.maisons.length ? choisir(L.maisons) : choisir(L.terre);
-        await marcher(el, ...but, mon);
-      }
-      await attendre(hasard(800, 3000));
     }
-  }
-
-  async function brouter(el, centreX, centreY, mon) {
-    while (actif && mon === jeton) {
-      await pause();
-      const [x, y] = aCote(centreX, centreY);
-      await marcher(el, x, y, mon);
-      await action(el, 'travaille', hasard(1500, 4000), mon);
-    }
-  }
-
-  // ---------- Fumée et mouettes ----------
-
-  function fumee(x, y, mon) {
-    const tic = async () => {
-      if (!actif || mon !== jeton) return;
-      if (!document.hidden) {
-        const { ts } = contexte();
-        const { px, py } = centre(x, y);
-        const f = document.createElement('span');
-        f.className = 'fumee';
-        f.style.left = `${px + ts * 0.18}px`;
-        f.style.top = `${py - ts * 0.45}px`;
-        couche.append(f);
-        f.animate([
-          { transform: 'translate(0, 0) scale(.5)', opacity: 0.8 },
-          { transform: `translate(${hasard(-6, 6)}px, -${ts * 0.9}px) scale(1.6)`, opacity: 0 },
-        ], { duration: 2600, easing: 'ease-out' }).finished.then(() => f.remove(), () => f.remove());
-      }
-      const m = setTimeout(tic, hasard(1800, 4200));
-      minuteries.add(m);
-    };
-    const m = setTimeout(tic, hasard(300, 2500));
-    minuteries.add(m);
-  }
-
-  function mouettes(mon) {
-    const vol = () => {
-      if (!actif || mon !== jeton) return;
-      if (!document.hidden) {
-        const { ts } = contexte();
-        const largeur = couche.clientWidth || 300, hauteur = couche.clientHeight || 200;
-        const el = document.createElement('span');
-        el.className = 'etre mouette';
-        el.style.setProperty('--ts', `${ts * 0.8}px`);
-        el.innerHTML = '<i></i>';
-        couche.append(el);
-        const y = hasard(0, hauteur * 0.6), versDroite = Math.random() < 0.5;
-        if (!versDroite) el.classList.add('gauche');
-        el.animate([
-          { transform: `translate(${versDroite ? -ts : largeur}px, ${y}px)` },
-          { transform: `translate(${(versDroite ? largeur : -ts) / 2}px, ${y + hasard(-20, 20)}px)`, offset: 0.5 },
-          { transform: `translate(${versDroite ? largeur : -ts}px, ${y + hasard(-30, 10)}px)` },
-        ], { duration: hasard(7000, 11000), easing: 'linear' }).finished.then(() => el.remove(), () => el.remove());
-      }
-      const m = setTimeout(vol, hasard(9000, 20000));
-      minuteries.add(m);
-    };
-    const m = setTimeout(vol, hasard(2000, 6000));
-    minuteries.add(m);
-  }
-
-  // ---------- (Re)peupler l'île ----------
-
-  function peupler() {
-    jeton++;
-    const mon = jeton;
-    for (const m of minuteries) clearTimeout(m);
-    minuteries.clear();
-    couche.querySelectorAll('.etre, .fumee').forEach((e) => e.remove());
-    if (!actif) return;
-    const { ile } = contexte();
-    const reduit = mouvementReduit();
-    const L = lieux();
-    const depart = (liste) => (liste.length ? choisir(liste) : choisir(L.terre));
-    // villageois : un métier selon ce qui existe sur l'île
-    const nb = Math.min(MAX_HABITANTS, Math.max(1, habitants({ iles: [ile] })));
-    const metiers = [];
-    if (L.cabanes.length) metiers.push('bucheron');
-    if (L.champs.length) metiers.push('paysanne');
-    metiers.push('macon', 'promeneur', 'promeneuse');
-    const VARIANTE = { bucheron: 1, paysanne: 2, macon: 3, promeneur: 0, promeneuse: 4 };
-    for (let k = 0; k < nb; k++) {
-      const metier = metiers[k % metiers.length];
-      const el = creer('habitant', VARIANTE[metier], ...depart(L.maisons));
-      if (!reduit) vivre(el, metier, mon);
-    }
-    // animaux
-    for (const [k, c] of Object.entries(ile.cases)) {
-      if (c.niveau === 0) continue;
-      const [x, y] = coord(k);
-      if (c.type === 'ferme') for (let i = 0; i < Math.min(3, c.niveau + 1); i++) {
-        const el = creer('mouton', 0, x, y);
-        if (!reduit) brouter(el, x, y, mon);
-      }
-      if ((c.type === 'maison' || c.type === 'hameau') && Math.random() < 0.6) {
-        const el = creer('poule', 0, x, y);
-        if (!reduit) brouter(el, x, y, mon);
-      }
-      if (!reduit && (c.type === 'maison' || c.type === 'village' || c.type === 'hameau' || c.type === 'chateau')) fumee(x, y, mon);
-    }
-    if (!reduit) mouettes(mon);
+    for (const f of fumees) f.age += dt;
+    fumees = fumees.filter((f) => f.age < 2.6);
   }
 
   return {
     peupler,
-    arreter() {
-      actif = false;
-      jeton++;
-      for (const m of minuteries) clearTimeout(m);
-      couche.querySelectorAll('.etre, .fumee').forEach((e) => e.remove());
-    },
+    maj,
+    get entites() { return entites; },
+    get fumees() { return fumees; },
+    get horloge() { return horloge; },
+    oublier() { signature = ''; },
   };
 }
-

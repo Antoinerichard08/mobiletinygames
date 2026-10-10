@@ -1,43 +1,69 @@
-// Écran « Mon île » : construire, aménager, décorer et agrandir son île ; les habitants récoltent bois,
-// pierre et blé en temps réel (règles dans regles.js, vie du village dans vie.js).
-// Graphismes : « Tiny Islands » (Majadroid, CC0), « Tiny Town » (Kenney, CC0), habitants dessinés pour l'appli.
+// Écran « Mon île » : le cœur de l'appli. Un monde plein écran, à l'horizontale, qu'on parcourt du doigt.
+// Interface inspirée des grands jeux de construction : ressources en haut à droite, niveau en haut à gauche,
+// « Jouer » en bas à gauche, « Construire » en bas à droite ; on touche un bâtiment pour voir ses actions,
+// on pose les constructions directement sur l'île (un fantôme, puis ✓).
+// Règles : regles.js · plan de l'archipel : plan.js · rendu : monde.js · vie : vie.js · gestes : gestes.js.
+// Graphismes : « Tiny Islands » (Majadroid, CC0), « Tiny Town » (Kenney, CC0), le reste dessiné pour l'appli.
 import { $, $$, chargerStyle, pluriel } from '../core/outils.js';
 import { lire, ecrire } from '../core/stockage.js';
 import { solde, depenserEtoiles, ajouterEtoiles } from '../core/etoiles.js';
-import { demander } from '../core/dialogue.js';
-import { animer, attendre, pop, secouer, mouvementReduit, COURBE_REBOND } from '../core/mouvement.js';
-import { T, S, tuile, sprite, tuileBatiment } from '../core/tuiles.js';
-import {
-  ILES, BATIMENTS, DECORS, AMENAGEMENTS, ORDRE_BATIMENTS, ORDRE_DECORS, ORDRE_AMENAGEMENTS, NOMS_DIRECTIONS, RESSOURCES,
-  MINUTE, migrer, cle, coord, estTerre, terrainDe, construire, ameliorer, accelerer, prixAcceleration,
-  decorer, retirer, produit, stock, plafond, periode, ramasser, toutRamasser, peutAmenager, amenager, agrandir,
-  coutAgrandir, obstacleAgrandir, actualiser, beauteIle, beauteTotale, ilesOuvertes, estDebloque, prochainPalier,
-  apercu, habitants, peutPayer, manque, niveauMax, pointsCase,
-} from './regles.js';
-import { creerVie } from './vie.js';
-import { ouvrirTout } from './regles.js';
+import { revenir } from '../core/navigation.js';
+import { mouvementReduit } from '../core/mouvement.js';
+import { T, S, tuile, sprite, ilot } from '../core/tuiles.js';
 import { modeDev } from '../core/config.js';
+import { JEUX } from '../registre.js';
+import {
+  ILES, BATIMENTS, DECORS, AMENAGEMENTS, ORDRE_BATIMENTS, ORDRE_DECORS, RESSOURCES, NOMS_RESSOURCES, NOMS_DIRECTIONS,
+  MINUTE, migrer, cle, coord, estTerre, estCote, terrainDe, construire, ameliorer, decorer, retirer, produit, stock,
+  plafond, periode, ramasser, toutRamasser, peutAmenager, amenager, agrandir, coutAgrandir, actualiser, beauteTotale,
+  ilesOuvertes, estDebloque, apercu, habitants, peutPayer, manque, niveauMax, pointsCase, ouvrirTout, batisseurs,
+  batisseursLibres, chantiers, prixBatisseur, engagerBatisseur, prixFinir, finir, peutDeplacer, apercuDeplacement,
+  deplacer, ramasserTresor, paliers, progressionIle, dureeChantier, voisinsDe,
+} from './regles.js';
+import { conseil } from './conseil.js';
+import { camera, versEcran, versMonde, borner, zoomAutour, zoomPourVoir, centrePourVoir, entre } from './camera.js';
+import { origine, rectIle, rectMonde, caseSous, ileProche, centreCase } from './plan.js';
+import { creerRendu, imageCase, imageType } from './monde.js';
+import { creerVie } from './vie.js';
+import { suivreGestes } from './gestes.js';
+import { ICONE } from './icones.js';
 
 chargerStyle(new URL('./ile.css', import.meta.url));
 
 const CLE = 'ile';
-const ICONES = { bois: T.icones.bois, pierre: T.icones.pierre, ble: T.icones.ble };
+const ICONES_RES = { bois: T.icones.bois, pierre: T.icones.pierre, ble: T.icones.ble };
 const OUTILS = { abattre: S.outils.hache, casser: S.outils.pioche, planter: S.pousse, creuser: S.outils.pelle, combler: S.outils.seau };
-const ONGLETS = { construire: 'Construire', amenager: 'Aménager', decorer: 'Décorer', agrandir: 'Agrandir' };
-const NOM_RES = { bois: 'bois', pierre: 'pierre', ble: 'blé' };
+const NOMS_TERRAIN = { herbe: 'Herbe libre', foret: 'Forêt', montagne: 'Rochers', etang: 'Étang', eau: 'Mer' };
+const GUIDE = 'Rose';
+const MARGES = { haut: 70, bas: 84, gauche: 8, droite: 8 }; // la place prise par l'interface autour du monde
+// pour cadrer une île : l'interface peut déborder un peu sur la mer, mais pas sur la terre
+const CADRE = { haut: 44, bas: 28, gauche: 120, droite: 160 };
+const CADRE_AGRANDIR = { haut: 56, bas: 16, gauche: 24, droite: 170 };
 
 let E = null;
 let racine = null;
-let onglet = 'construire';
-let choix = null; // bâtiment, décor ou aménagement choisi, en attente d'une case
+let scene = null;
+let toile = null;
+let rendu = null;
 let vie = null;
-let ticker = null;
+let cam = camera();
+let tourne = false;
+let animation = 0;
+let dernier = 0;
+let temps = 0; // secondes, pour les animations
+let horloge = null;
+let ui = null;
 let surRedimension = null;
-let signature = '';
-let ts = 40;
+let surTouche = null;
+let surVisibilite = null;
 
 const maintenant = () => Date.now();
-const ile = () => E.iles[E.active];
+const reduit = () => mouvementReduit();
+const ouvertes = () => ilesOuvertes(E);
+const etoilesTexte = () => (modeDev() ? '∞' : String(solde()));
+const payerEtoiles = (n) => depenserEtoiles(n);
+const vibrer = (ms = 12) => { try { navigator.vibrate?.(ms); } catch { /* rien */ } };
+
 function charger() {
   E = migrer(lire(CLE, null), maintenant());
   ouvrirTout(modeDev());
@@ -47,579 +73,1339 @@ function charger() {
 function remplirSiDev() {
   if (modeDev()) for (const r of RESSOURCES) E.ressources[r] = Math.max(E.ressources[r], 9999);
 }
-const sauver = () => { remplirSiDev(); ecrire(CLE, E); };
-const dire = (t) => { const el = $('#ile-status', racine); if (el) el.innerHTML = t || ''; };
-const payerEtoiles = (n) => depenserEtoiles(n);
+function sauver() {
+  remplirSiDev();
+  if (!modeDev()) E.soldeVu = solde();
+  ecrire(CLE, E);
+}
 
 // ---------- Petits morceaux d'affichage ----------
 
 function icone(res, taille = 20) {
-  return res === 'etoiles' ? `<b class="etoile-ic" style="font-size:${taille * 0.9}px">★</b>` : tuile(ICONES[res], taille);
+  return res === 'etoiles' ? `<span class="ic-etoile" style="font-size:${taille}px">${ICONE.etoile}</span>` : tuile(ICONES_RES[res], taille);
 }
 /** Coût sous forme de pastilles ; ce qui manque est en rouge. */
-function coutHtml(cout) {
+function coutHtml(cout, taille = 20) {
   const m = manque(E, solde(), cout);
-  return Object.entries(cout).filter(([, v]) => v).map(([r, v]) => `<span class="prix ${m[r] ? 'manque' : ''}">${icone(r, 18)}${v}</span>`).join('');
+  const morceaux = Object.entries(cout).filter(([, v]) => v).map(([r, v]) => `<span class="prix ${m[r] ? 'manque' : ''}">${icone(r, taille)}<b>${v}</b></span>`);
+  return morceaux.join('') || '<span class="prix"><b>Gratuit</b></span>';
 }
 function texteManque(m) {
-  return Object.entries(m).map(([r, v]) => (r === 'etoiles' ? pluriel(v, 'étoile') : `${v} ${NOM_RES[r]}`)).join(', ');
+  return Object.entries(m).map(([r, v]) => (r === 'etoiles' ? pluriel(v, 'étoile') : `${v} ${NOMS_RESSOURCES[r]}`)).join(', ');
 }
 const duree = (ms) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
-  return s >= 60 ? `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')}` : `${s} s`;
+  if (s < 60) return `${s} s`;
+  return s % 60 ? `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')}` : `${s / 60} min`;
 };
+const imageHtml = (img, taille) => (img.f === 's' ? sprite(img.c, taille) : tuile(img.c, taille));
+const nomDe = (type) => (BATIMENTS[type] || DECORS[type]).nom;
+const coutDe = (genre, type) => (genre === 'construire' ? BATIMENTS[type].cout[0] : DECORS[type].cout);
 
-// ---------- Ce qu'on voit sur chaque case ----------
-
-/** Image d'une case : { feuille: 't' (Tiny Islands) ou 's' (sprites), c: [col, rang], etape }. */
-function imageCase(x, y, t) {
-  const I = ile(), k = cle(x, y), c = I.cases[k], w = I.travaux[k], terrain = terrainDe(I, x, y);
-  if (c) {
-    if (c.niveau === 0 && c.chantier && !BATIMENTS[c.type]?.cote) {
-      const p = (t - c.chantier.debut) / (c.chantier.fin - c.chantier.debut);
-      const etape = Math.min(2, Math.max(0, Math.floor(p * 3)));
-      return { feuille: 's', c: S.chantier[etape], etape };
-    }
-    const niveau = Math.max(1, c.niveau);
-    if (DECORS[c.type]) return { feuille: 's', c: S.decor[c.type] || S.fleurs };
-    if (c.type === 'carriere') return { feuille: 's', c: S.carriere[niveau - 1] };
-    return { feuille: 't', c: tuileBatiment(c.type, niveau) };
-  }
-  if (w) {
-    const vue = { abattre: S.souche, casser: S.gravats, planter: S.pousse, creuser: S.chantier[0], combler: S.chantier[0] }[w.action];
-    return { feuille: 's', c: vue };
-  }
-  if (terrain === 'foret') return { feuille: 't', c: T.foret };
-  if (terrain === 'montagne') return { feuille: 't', c: T.montagne };
-  if (terrain === 'etang') return { feuille: 's', c: S.etang };
-  if (terrain === 'herbe') return { feuille: 't', c: T.herbe };
-  // la mer autour de l'île : côte selon la position
-  const { x0, y0, x1, y1 } = I.ext;
-  if (y < y0) return { feuille: 't', c: x < x0 ? T.coinNO : x > x1 ? T.coinNE : T.bordN };
-  if (y > y1) return { feuille: 't', c: x < x0 ? T.coinSO : x > x1 ? T.coinSE : T.bordS };
-  return { feuille: 't', c: x < x0 ? T.bordO : T.bordE };
-}
-const imageHtml = (img, taille) => (img.feuille === 's' ? sprite(img.c, taille) : tuile(img.c, taille));
-
-function tailleCase() {
-  const I = ile();
-  const L = I.ext.x1 - I.ext.x0 + 3, H = I.ext.y1 - I.ext.y0 + 3;
-  const largeur = Math.min(($('.ile-mer', racine)?.clientWidth || 340) - 20, 640);
-  const hauteur = matchMedia('(orientation: landscape) and (max-height: 560px)').matches ? window.innerHeight - 40 : 9999;
-  const brut = Math.floor(Math.min(largeur / L, hauteur / H));
-  return Math.max(24, brut >= 32 ? Math.floor(brut / 8) * 8 : brut);
+/** Position d'un élément de l'interface dans la scène (la scène peut être tournée : on ne lit pas l'écran). */
+function posScene(el) {
+  let x = 0, y = 0;
+  for (let n = el; n && n !== scene; n = n.offsetParent) { x += n.offsetLeft; y += n.offsetTop; }
+  return { x: x + el.offsetWidth / 2, y: y + el.offsetHeight / 2 };
 }
 
-/** Les cases à proposer quand un bâtiment, un décor ou un aménagement est choisi (avec la beauté gagnée). */
-function propositions() {
-  const I = ile(), res = new Map();
-  if (!choix) return res;
-  for (let y = I.ext.y0 - 1; y <= I.ext.y1 + 1; y++) for (let x = I.ext.x0 - 1; x <= I.ext.x1 + 1; x++) {
-    if (choix.genre === 'amenager') { if (peutAmenager(I, x, y, choix.type)) res.set(cle(x, y), null); continue; }
-    const a = apercu(I, x, y, choix.type);
-    if (a !== null) res.set(cle(x, y), a);
-  }
-  return res;
+// ---------- Plein écran, à l'horizontale ----------
+
+async function pleinEcran() {
+  if (!matchMedia('(pointer: coarse)').matches) return; // sur ordinateur, on reste dans la fenêtre
+  try {
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+  } catch { /* pas permis : tant pis, l'île prend déjà toute la page */ }
+  try { await screen.orientation?.lock?.('landscape'); } catch { /* le téléphone refuse : on tourne la scène nous-mêmes */ }
+  orienter();
+}
+function quitterPleinEcran() {
+  try { screen.orientation?.unlock?.(); } catch { /* rien */ }
+  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
 }
 
-function nomCase(x, y) {
-  const I = ile(), c = I.cases[cle(x, y)];
-  if (c) {
-    const def = BATIMENTS[c.type] || DECORS[c.type];
-    return `${def.nom}${BATIMENTS[c.type] ? `, niveau ${c.niveau}` : ''}${c.chantier ? ', en chantier' : ''}`;
-  }
-  return { herbe: 'Herbe libre', foret: 'Forêt', montagne: 'Rochers', etang: 'Étang', eau: 'Mer' }[terrainDe(I, x, y)];
+/** Si le téléphone est tenu droit, la scène est tournée d'un quart de tour : le jeu reste à l'horizontale. */
+const taille = { l: 0, h: 0 };
+function orienter() {
+  if (!scene) return;
+  const W = window.innerWidth, H = window.innerHeight;
+  taille.l = W;
+  taille.h = H;
+  tourne = H > W * 1.05;
+  const l = tourne ? H : W, h = tourne ? W : H;
+  scene.style.width = `${l}px`;
+  scene.style.height = `${h}px`;
+  scene.style.transform = tourne ? `translate(${W}px, 0) rotate(90deg)` : 'none';
+  scene.classList.toggle('tourne', tourne);
+  const ancien = { l: cam.l, h: cam.h };
+  cam = { ...cam, l, h };
+  rendu.dimensionner(l, h, Math.min(2.5, window.devicePixelRatio || 1));
+  if (ancien.l !== l || ancien.h !== h) cam = borner(cam, bornes());
+}
+const versScene = (cx, cy) => (tourne ? { x: cy, y: window.innerWidth - cx } : { x: cx, y: cy });
+
+// ---------- Caméra ----------
+
+/** Jusqu'où la caméra peut aller : tout l'archipel, et assez de mer autour pour centrer n'importe quelle île. */
+function bornes() {
+  const r = rectMonde(E, 1), mx = Math.max(0, cam.l / cam.z / 2 - 5), my = Math.max(0, cam.h / cam.z / 2 - 4);
+  return { x0: r.x0 - mx, y0: r.y0 - my, x1: r.x1 + mx, y1: r.y1 + my };
+}
+function limitesZoom() {
+  const m = rectMonde(E, 1);
+  return { min: Math.max(14, Math.min(cam.l / (m.x1 - m.x0), cam.h / (m.y1 - m.y0))), max: 120 };
+}
+/** La caméra qui montre une île en entier, entre les boutons. */
+function cameraPourIle(n, marge = 0.2, cadre = CADRE) {
+  const r = rectIle(E.iles[n], n);
+  const b = { x0: r.x0 - marge, y0: r.y0 - marge, x1: r.x1 + marge, y1: r.y1 + marge };
+  const z = Math.min(96, zoomPourVoir(cam, b, cadre));
+  return { ...cam, z, ...centrePourVoir(cam, b, z, cadre) };
+}
+function volerVers(cible, ms = 650) {
+  const fin = borner({ ...cam, ...cible, l: cam.l, h: cam.h }, bornes());
+  if (reduit()) { cam = fin; ui.vol = null; return; }
+  ui.vol = { de: { ...cam }, vers: fin, debut: temps, duree: ms / 1000 };
+  ui.inertie = null;
+}
+/** S'assure qu'une case est bien visible (et pas sous les boutons) ; sinon la caméra y va. */
+function montrerCase(n, k, zoom = null) {
+  const [x, y] = coord(k), c = centreCase(E.iles[n], n, x, y);
+  const p = versEcran(cam, c.x, c.y);
+  const dedans = p.x > 90 && p.x < cam.l - 90 && p.y > MARGES.haut + 30 && p.y < cam.h - MARGES.bas - 20;
+  if (dedans && !zoom) return;
+  volerVers({ x: c.x, y: c.y + (MARGES.bas - MARGES.haut) / 2 / (zoom || cam.z), z: zoom || cam.z });
 }
 
-function dessinerGrille() {
+// ---------- La boucle d'animation ----------
+
+function etatDessin() {
+  const sel = ui.selection;
+  let fantome = null, propositions = null, deplacement = null;
+  if (ui.mode === 'poser' || ui.mode === 'deplacer') {
+    const p = ui.pose;
+    propositions = { n: p.n, gains: p.gains, meilleur: p.meilleur };
+    const gain = p.gains.get(p.cle);
+    fantome = { n: p.n, cle: p.cle, image: p.image, valide: p.gains.has(p.cle), gain: gain ?? null };
+    if (ui.mode === 'deplacer') deplacement = { n: p.n, de: p.de };
+  }
+  return {
+    E, cam, t: maintenant(), temps, ouvertes: ouvertes(), vie, reduit: reduit(),
+    selection: ui.mode === 'libre' && sel ? sel : null,
+    propositions, fantome, deplacement,
+    agrandir: ui.mode === 'agrandir' ? ui.agrandir : null,
+    guide: ui.guide?.cible?.genre === 'case' ? ui.guide.cible : null,
+  };
+}
+
+function boucle(t) {
+  animation = requestAnimationFrame(boucle);
   if (!racine) return;
-  const I = ile(), t = maintenant();
-  ts = tailleCase();
-  const props = propositions();
-  const meilleur = props.size && choix?.genre !== 'amenager' ? Math.max(...props.values()) : null;
-  const { x0, y0, x1, y1 } = I.ext;
-  let h = '';
-  for (let y = y0 - 1; y <= y1 + 1; y++) for (let x = x0 - 1; x <= x1 + 1; x++) {
-    const k = cle(x, y), img = imageCase(x, y, t), p = props.get(k);
-    const c = I.cases[k];
-    const classes = ['case', estTerre(I, x, y) ? 'terre' : 'mer', props.has(k) ? 'possible' : '',
-      p !== undefined && p !== null && p === meilleur ? 'meilleur' : '', c?.chantier && c.niveau > 0 ? 'travaux-haut' : ''].join(' ');
-    h += `<button class="${classes}" data-k="${k}" data-etape="${img.etape ?? ''}" style="grid-column:${x - x0 + 2};grid-row:${y - y0 + 2}" aria-label="${nomCase(x, y)}">`
-      + `<span class="fond">${imageHtml(img, ts)}</span>`
-      + (p !== undefined && p !== null ? `<span class="gain">+${p}</span>` : '')
-      + '<span class="minuteur" hidden><b></b></span><span class="recolte" hidden></span></button>';
+  const dt = Math.min(0.05, Math.max(0, (t - dernier) / 1000));
+  dernier = t;
+  temps += dt;
+  // l'écran a changé de taille (rotation, barre du navigateur…) sans prévenir : on se recale
+  if (window.innerWidth !== taille.l || window.innerHeight !== taille.h) orienter();
+  if (ui.vol) {
+    const p = (temps - ui.vol.debut) / ui.vol.duree;
+    cam = entre(ui.vol.de, ui.vol.vers, p);
+    if (p >= 1) ui.vol = null;
+  } else if (ui.inertie) {
+    cam = { ...cam, x: cam.x - (ui.inertie.vx * dt) / cam.z, y: cam.y - (ui.inertie.vy * dt) / cam.z };
+    const frein = Math.exp(-dt * 5);
+    ui.inertie = { vx: ui.inertie.vx * frein, vy: ui.inertie.vy * frein };
+    if (Math.hypot(ui.inertie.vx, ui.inertie.vy) < 8) ui.inertie = null;
   }
-  const grille = $('.ile-grille', racine);
-  grille.style.setProperty('--ts', `${ts}px`);
-  grille.style.gridTemplateColumns = `repeat(${x1 - x0 + 3}, ${ts}px)`;
-  grille.style.gridTemplateRows = `repeat(${y1 - y0 + 3}, ${ts}px)`;
-  grille.innerHTML = h;
-  const plan = $('.ile-plan', racine);
-  plan.style.width = `${(x1 - x0 + 3) * ts}px`;
-  plan.style.height = `${(y1 - y0 + 3) * ts}px`;
-  majDynamique();
-  // on ne repeuple l'île que si ses bâtiments ont changé (sinon les habitants restent où ils sont)
-  const sig = `${E.active}|${ts}|${JSON.stringify(I.ext)}|${Object.entries(I.cases).map(([k2, c2]) => `${k2}:${c2.type}:${c2.niveau}`).join(';')}|${JSON.stringify(I.terrain)}`;
-  if (sig !== signature) {
-    signature = sig;
-    vie?.peupler();
+  cam = borner(cam, bornes());
+  const a = versMonde(cam, 0, 0), b = versMonde(cam, cam.l, cam.h);
+  if (!reduit()) vie.maj(dt, { x0: a.x, y0: a.y, x1: b.x, y1: b.y });
+  rendu.dessiner(etatDessin());
+  placerEtiquettes();
+  // l'île qu'on regarde (pour le titre et les constructions)
+  const centre = versMonde(cam, cam.l / 2, cam.h / 2);
+  const proche = ileProche(E, ouvertes(), centre.x, centre.y);
+  if (proche !== E.active && ui.mode === 'libre' && !ui.vol) { E.active = proche; majRuban(); }
+}
+
+/** Le nom au-dessus de la case choisie, et les boutons ✓ ✗ à côté du fantôme : ils suivent la caméra. */
+function placerEtiquettes() {
+  const etiquette = $('#ile-etiquette', scene);
+  const cible = ui.mode === 'libre' ? ui.selection : null;
+  if (cible) {
+    const [x, y] = coord(cible.cle), c = centreCase(E.iles[cible.n], cible.n, x, y);
+    const p = versEcran(cam, c.x, c.y - 0.5);
+    etiquette.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y - 12)}px) translate(-50%, -100%)`;
   }
-}
-
-/** Ce qui bouge chaque seconde : minuteurs des chantiers, bulles de récolte, bouton « Tout ramasser ». */
-function majDynamique() {
-  if (!racine) return;
-  const I = ile(), t = maintenant();
-  let total = 0;
-  for (const el of $$('.ile-grille .case', racine)) {
-    const k = el.dataset.k, [x, y] = coord(k), c = I.cases[k], w = I.travaux[k];
-    const travail = c?.chantier || w;
-    const minuteur = el.querySelector('.minuteur');
-    if (travail) {
-      const p = Math.min(1, (t - travail.debut) / (travail.fin - travail.debut));
-      minuteur.hidden = false;
-      minuteur.style.setProperty('--p', p.toFixed(3));
-      minuteur.querySelector('b').textContent = duree(travail.fin - t);
-      // l'étape du chantier change (fondations → échafaudage → charpente)
-      if (c && c.niveau === 0) {
-        const img = imageCase(x, y, t);
-        if (String(img.etape) !== el.dataset.etape) {
-          el.dataset.etape = img.etape;
-          el.querySelector('.fond').innerHTML = imageHtml(img, ts);
-          pop(el.querySelector('.fond'), 1.12);
-        }
-      }
-    } else minuteur.hidden = true;
-    const bulle = el.querySelector('.recolte');
-    const q = c ? stock(I, x, y, t) : 0;
-    total += q;
-    if (q > 0) {
-      const res = BATIMENTS[c.type].prod.res;
-      const html = `${icone(res, Math.max(14, Math.round(ts * 0.42)))}<b>${q}</b>`;
-      if (bulle.innerHTML !== html) bulle.innerHTML = html;
-      const etaitCache = bulle.hidden;
-      bulle.hidden = false;
-      bulle.classList.toggle('plein', q >= plafond(c));
-      if (etaitCache) animer(bulle, [{ transform: 'translate(-50%, 8px) scale(0)' }, { transform: 'translate(-50%, 0) scale(1)' }], { duration: 300, easing: COURBE_REBOND });
-    } else bulle.hidden = true;
+  const valider = $('#ile-valider', scene);
+  if ((ui.mode === 'poser' || ui.mode === 'deplacer') && ui.pose) {
+    const [x, y] = coord(ui.pose.cle), c = centreCase(E.iles[ui.pose.n], ui.pose.n, x, y);
+    const p = versEcran(cam, c.x, c.y);
+    const l = valider.offsetWidth || 140, h = valider.offsetHeight || 64;
+    let px = p.x + cam.z * 0.55 + 10, py = p.y - h / 2;
+    if (px + l > cam.l - 8) px = p.x - cam.z * 0.55 - 10 - l;
+    px = Math.max(8, Math.min(cam.l - l - 8, px));
+    py = Math.max(MARGES.haut - 10, Math.min(cam.h - h - 8, py));
+    valider.style.transform = `translate(${Math.round(px)}px, ${Math.round(py)}px)`;
   }
-  // toutes les îles comptent pour « Tout ramasser »
-  let partout = 0;
-  E.iles.forEach((autre, n) => { if (n !== E.active) for (const k of Object.keys(autre.cases)) partout += stock(autre, ...coord(k), t); });
-  const b = $('#ile-ramasser', racine);
-  b.hidden = total + partout === 0;
-  b.textContent = `Tout ramasser (${total + partout})`;
-}
-
-function dessinerEntete() {
-  if (!racine) return;
-  const r = E.ressources;
-  $('#ile-res', racine).innerHTML = `
-    <span class="res-puce" data-res="etoiles" aria-label="${solde()} étoiles">${icone('etoiles', 22)}<b>${modeDev() ? "∞" : solde()}</b></span>
-    ${RESSOURCES.map((x) => `<span class="res-puce" data-res="${x}" aria-label="${r[x]} ${NOM_RES[x]}">${icone(x, 22)}<b>${r[x]}</b></span>`).join('')}
-    <span class="res-puce" aria-label="${habitants(E)} habitants">${sprite(S.habitant(0, 0), 26)}<b>${habitants(E)}</b></span>`;
-  const total = beauteTotale(E), palier = prochainPalier(E);
-  const seuils = [0, ...ORDRE_BATIMENTS.map((k) => BATIMENTS[k].debloque), ...ORDRE_DECORS.map((k) => DECORS[k].debloque || 0), ...ILES.map((x) => x.seuil)];
-  const precedent = seuils.filter((s) => s <= total).sort((a, b) => b - a)[0] || 0;
-  const pourcent = palier ? Math.round(((total - precedent) / (palier.seuil - precedent)) * 100) : 100;
-  $('#ile-beaute', racine).innerHTML = `
-    <p><b>Beauté : ${total}</b>${palier ? ` <small>· encore ${palier.seuil - total} pour : ${palier.texte}</small>` : ' <small>· tout est débloqué !</small>'}</p>
-    <span class="barre"><i style="width:${pourcent}%"></i></span>`;
-  const ouvertes = ilesOuvertes(E), n = E.active;
-  $('.ile-nav', racine).innerHTML = ouvertes > 1
-    ? `<button class="btn" data-ile="-1" ${n === 0 ? 'disabled' : ''} aria-label="Île précédente">◀</button>
-       <p><b>${ILES[n].nom}</b><small>Île ${n + 1} sur ${ouvertes} · beauté ${beauteIle(ile())}</small></p>
-       <button class="btn" data-ile="1" ${n >= ouvertes - 1 ? 'disabled' : ''} aria-label="Île suivante">▶</button>`
-    : `<p><b>${ILES[n].nom}</b></p>`;
-}
-
-function carte(genre, type, img, nom, cout, desc, ouvert, verrou) {
-  const choisi = choix && choix.genre === genre && choix.type === type;
-  return `<button class="carte-bat ${choisi ? 'choisi' : ''}" data-genre="${genre}" data-type="${type}" ${ouvert ? '' : 'disabled'}>
-    ${img}<span class="cb-nom">${nom}</span>
-    <span class="cb-prix">${ouvert ? coutHtml(cout) || '<span class="prix">Gratuit</span>' : verrou}</span>
-    <span class="cb-desc">${desc}</span></button>`;
-}
-
-function dessinerBoutique() {
-  if (!racine) return;
-  $$('.onglets button', racine).forEach((b) => b.setAttribute('aria-selected', String(b.dataset.onglet === onglet)));
-  let h = '';
-  if (onglet === 'construire') {
-    for (const type of ORDRE_BATIMENTS) {
-      const def = BATIMENTS[type], ouvert = estDebloque(E, type);
-      const img = type === 'carriere' ? sprite(S.carriere[0], 48) : tuile(tuileBatiment(type, 1), 48);
-      h += carte('construire', type, img, def.nom, def.cout[0], def.desc, ouvert, `Dès ${def.debloque} de beauté`);
-    }
-  } else if (onglet === 'amenager') {
-    for (const type of ORDRE_AMENAGEMENTS) {
-      const a = AMENAGEMENTS[type];
-      const gain = Object.entries(a.gain).map(([r, v]) => `+${v} ${NOM_RES[r]}`).join(', ');
-      h += carte('amenager', type, sprite(OUTILS[type], 48), a.nom, a.cout, `${a.desc}${gain ? ` (${gain})` : ''}`, true, '');
-    }
-  } else if (onglet === 'decorer') {
-    for (const type of ORDRE_DECORS) {
-      const def = DECORS[type], ouvert = estDebloque(E, type);
-      h += carte('decorer', type, sprite(S.decor[type] || S.fleurs, 48), def.nom, def.cout, def.desc, ouvert, `Dès ${def.debloque} de beauté`);
-    }
-  } else {
-    const I = ile();
-    h += '<p class="note agrandir-note">Agrandir ajoute une rangée de terre au bord de l’île. Il faut de la pierre : cassez des rochers ou construisez une carrière.</p>';
-    for (const dir of ['nord', 'sud', 'ouest', 'est']) {
-      const obstacle = obstacleAgrandir(I, dir);
-      const desc = obstacle === 'max' ? 'L’île est déjà au plus grand de ce côté' : obstacle === 'port' ? 'Un port est construit de ce côté' : 'Une nouvelle rangée de terre';
-      h += carte('agrandir', dir, `<span class="fleche fleche-${dir}" aria-hidden="true">➜</span>`, `Agrandir ${NOMS_DIRECTIONS[dir]}`, coutAgrandir(I, dir), desc, !obstacle, 'Impossible');
-    }
-  }
-  $('#ile-boutique', racine).innerHTML = h;
-  $('#ile-fin', racine).hidden = !choix;
-}
-
-function toutDessiner() {
-  dessinerEntete();
-  dessinerGrille();
-  dessinerBoutique();
-}
-
-// ---------- Effets ----------
-
-/** Un petit texte qui s'envole au-dessus d'une case. */
-function envol(k, html) {
-  const el = $(`.case[data-k="${k}"]`, racine);
-  if (!el || mouvementReduit()) return;
-  const b = document.createElement('span');
-  b.className = 'envol';
-  b.innerHTML = html;
-  el.append(b);
-  animer(b, [{ transform: 'translate(-50%, 0)', opacity: 0 }, { transform: 'translate(-50%, -18px)', opacity: 1, offset: 0.25 }, { transform: 'translate(-50%, -64px)', opacity: 0 }],
-    { duration: 1400, easing: 'ease-out' }).then(() => b.remove());
-}
-
-/** Des icônes de ressource volent de la case vers le compteur en haut. */
-async function voler(k, res, q) {
-  const depart = $(`.case[data-k="${k}"]`, racine)?.getBoundingClientRect();
-  const arrivee = $(`.res-puce[data-res="${res}"]`, racine)?.getBoundingClientRect();
-  if (!depart || !arrivee || mouvementReduit()) return;
-  const vols = [];
-  for (let i = 0; i < Math.min(q, 5); i++) {
-    const el = document.createElement('span');
-    el.className = 'vol-ressource';
-    el.innerHTML = icone(res, 24);
-    el.style.left = `${depart.left + depart.width / 2 - 12}px`;
-    el.style.top = `${depart.top + depart.height / 2 - 12}px`;
-    document.body.append(el);
-    const dx = arrivee.left + 12 - (depart.left + depart.width / 2), dy = arrivee.top + 4 - (depart.top + depart.height / 2);
-    vols.push(animer(el, [
-      { transform: 'translate(0, 0) scale(.6)', opacity: 0 },
-      { transform: `translate(${dx * 0.3}px, ${dy * 0.3 - 40}px) scale(1.2)`, opacity: 1, offset: 0.35 },
-      { transform: `translate(${dx}px, ${dy}px) scale(.8)`, opacity: 1 },
-    ], { duration: 750, delay: i * 90, easing: 'ease-in', fill: 'backwards' }).then(() => el.remove()));
-  }
-  await Promise.all(vols);
-}
-
-function deblocages() {
-  return { ouvertes: ilesOuvertes(E), debloques: [...ORDRE_BATIMENTS, ...ORDRE_DECORS].filter((t) => estDebloque(E, t)) };
-}
-async function annoncerDeblocages(avant) {
-  const nouveaux = [...ORDRE_BATIMENTS, ...ORDRE_DECORS].filter((t) => estDebloque(E, t) && !avant.debloques.includes(t));
-  for (const t of nouveaux) {
-    const def = BATIMENTS[t] || DECORS[t];
-    await demander({ titre: 'Nouveau !', texte: `Votre île est de plus en plus belle : « ${def.nom} » est maintenant disponible. ${def.desc}.`, oui: 'Super !' });
-  }
-  if (ilesOuvertes(E) > avant.ouvertes) {
-    const nouvelle = ilesOuvertes(E) - 1;
-    if (await demander({ titre: 'Une nouvelle île !', texte: `${ILES[nouvelle].nom} est apparue au large. Vous pourrez y construire encore plus.`, oui: 'Aller la voir', non: 'Plus tard' })) {
-      changerIle(nouvelle - E.active);
-    }
-  }
-  if (nouveaux.length) dessinerBoutique();
 }
 
 // ---------- Le temps passe ----------
 
+function deblocages() {
+  return { ouvertes: ouvertes(), debloques: [...ORDRE_BATIMENTS, ...ORDRE_DECORS].filter((t) => estDebloque(E, t)) };
+}
+
 async function tic() {
   if (!racine || document.hidden) return;
+  // pendant une fenêtre ou une pose, on attend : tout se calcule à partir de l'heure, rien n'est perdu
+  if (ui.fenetre || ui.mode !== 'libre') { majHud(); return; }
   const avant = deblocages();
   const evenements = actualiser(E, maintenant());
-  if (!evenements.length) return majDynamique();
-  sauver();
-  dessinerEntete();
-  dessinerGrille();
-  for (const ev of evenements) {
-    if (ev.n !== E.active) continue;
-    const el = $(`.case[data-k="${ev.cle}"] .fond`, racine);
-    if (el) animer(el, [{ transform: 'scale(1)', filter: 'brightness(1)' }, { transform: 'scale(1.3)', filter: 'brightness(1.5)', offset: 0.4 }, { transform: 'scale(1)', filter: 'brightness(1)' }], { duration: 650, easing: COURBE_REBOND });
-    if (ev.genre === 'construit' || ev.genre === 'agrandi') {
-      envol(ev.cle, `+${ev.gain} beauté`);
-      const nom = BATIMENTS[ev.type].nom;
-      dire(ev.genre === 'construit' ? `${nom} : c’est construit ! +${ev.gain} de beauté.` : `${nom} : niveau ${ev.niveau} ! +${ev.gain} de beauté.`);
-    } else {
-      const gain = Object.entries(ev.gain).map(([r, q]) => `+${q} ${icone(r, 18)}`).join(' ');
-      if (gain) envol(ev.cle, gain);
-      dire(`${AMENAGEMENTS[ev.action].nom} : c’est fait !`);
-    }
+  if (evenements.length) {
+    sauver();
+    for (const ev of evenements) celebrer(ev);
   }
-  await annoncerDeblocages(avant);
+  vie.peupler(E);
+  majHud();
+  majActions(true);
+  if (evenements.length) await annoncerDeblocages(avant);
 }
 
-// ---------- Actions ----------
-
-const coutDe = (genre, type) => (genre === 'construire' ? BATIMENTS[type].cout[0] : genre === 'decorer' ? DECORS[type].cout : AMENAGEMENTS[type].cout);
-
-function choisir(genre, type) {
-  if (genre === 'agrandir') return agrandirVers(type);
-  if (choix && choix.genre === genre && choix.type === type) { choix = null; dessinerGrille(); dessinerBoutique(); dire(''); return; }
-  const cout = coutDe(genre, type);
-  if (!peutPayer(E, solde(), cout)) {
-    secouer($(`.carte-bat[data-type="${type}"]`, racine));
-    return dire(`Il manque ${texteManque(manque(E, solde(), cout))}. ${cout.etoiles ? 'Jouez pour gagner des étoiles ; ' : ''}récoltez ou aménagez l’île pour avoir des ressources.`);
+/** Les effets quand quelque chose se termine. */
+function celebrer(ev) {
+  const ile = E.iles[ev.n], [x, y] = coord(ev.cle), c = centreCase(ile, ev.n, x, y);
+  if (ev.genre === 'tresor') {
+    if (ev.n < ouvertes()) dire('Une bouteille s’est échouée sur la plage ! Touchez-la.');
+    return;
   }
-  choix = { genre, type };
-  dessinerGrille();
-  dessinerBoutique();
-  if (!$$('.case.possible', racine).length) {
-    choix = null;
-    dessinerGrille();
-    dessinerBoutique();
-    return dire(genre === 'amenager' ? 'Aucune case ne s’y prête pour l’instant.' : 'Plus de place libre : aménagez ou agrandissez l’île.');
+  rendu.pop(ev.n, ev.cle, 'fini', temps);
+  if (ev.genre === 'construit' || ev.genre === 'agrandi') {
+    rendu.gerbe(c.x, c.y, 'poussiere', temps);
+    rendu.gerbe(c.x, c.y - 0.2, 'etoiles', temps);
+    rendu.texte(c.x, c.y - 0.6, `+${ev.gain} beauté`, temps, '#ffe066');
+    const nom = BATIMENTS[ev.type].nom;
+    dire(ev.genre === 'construit' ? `${nom} : c’est construit !` : `${nom} : niveau ${ev.niveau} !`);
+    vibrer(20);
+  } else {
+    rendu.gerbe(c.x, c.y, ev.action === 'casser' ? 'cailloux' : ev.action === 'creuser' || ev.action === 'combler' ? 'eau' : 'feuilles', temps);
+    const gain = Object.entries(ev.gain).map(([r, q]) => `+${q} ${NOMS_RESSOURCES[r]}`).join(' ');
+    if (gain) {
+      rendu.texte(c.x, c.y - 0.5, gain, temps);
+      for (const [r, q] of Object.entries(ev.gain)) voler(c, r, q);
+    }
+    dire(`${AMENAGEMENTS[ev.action].nom} : c’est fait !`);
   }
-  const nom = { construire: BATIMENTS[type]?.nom, decorer: DECORS[type]?.nom, amenager: AMENAGEMENTS[type]?.nom }[genre];
-  dire(genre === 'amenager'
-    ? `<b>${nom}</b> : touchez une case entourée.`
-    : `Touchez une case pour poser : <b>${nom}</b>. Les nombres montrent la beauté gagnée ; la meilleure case brille.`);
-  $('.ile-mer', racine).scrollIntoView({ behavior: mouvementReduit() ? 'auto' : 'smooth', block: 'center' });
+  if (ui.selection?.n === ev.n && ui.selection.cle === ev.cle) majActions();
 }
 
-async function toucherCase(k, el) {
-  const I = ile(), [x, y] = coord(k), t = maintenant();
-  if (choix) {
-    if (!el.classList.contains('possible')) {
-      secouer(el);
-      return dire('Choisissez une case entourée.');
+async function annoncerDeblocages(avant) {
+  const nouveaux = [...ORDRE_BATIMENTS, ...ORDRE_DECORS].filter((t) => estDebloque(E, t) && !avant.debloques.includes(t));
+  for (const t of nouveaux) {
+    const def = BATIMENTS[t] || DECORS[t];
+    rendu.gerbe(cam.x, cam.y, 'confettis', temps);
+    await fenetre({
+      classe: 'nouveau', titre: 'Nouveau !',
+      corps: `<div class="rayons" aria-hidden="true"></div><div class="nouveau-image">${imageHtml(imageType(t), 112)}</div>
+        <p class="nouveau-nom">${def.nom}</p><p>${def.desc}.</p><p class="petit">Votre île est de plus en plus belle : vous le trouverez dans « Construire ».</p>`,
+      boutons: [{ id: 'ok', texte: 'Super !', classe: 'vert' }],
+    });
+  }
+  if (ouvertes() > avant.ouvertes) {
+    const n = ouvertes() - 1;
+    const choix = await fenetre({
+      classe: 'nouveau', titre: 'Une nouvelle île !',
+      corps: `<div class="rayons" aria-hidden="true"></div><div class="nouveau-image">${ilot(3, 2, 30, [T.foret, null, T.montagne, null, T.foret, null])}</div>
+        <p class="nouveau-nom">${ILES[n].nom}</p><p>Les nuages se lèvent : une nouvelle île est apparue au large. Vous pourrez y construire encore plus.</p>`,
+      boutons: [{ id: 'plus-tard', texte: 'Plus tard' }, { id: 'voir', texte: 'Aller la voir', classe: 'vert' }],
+    });
+    rendu.devoiler(n, temps + (choix === 'voir' ? 0.5 : 0));
+    vie.oublier();
+    vie.peupler(E);
+    if (choix === 'voir') { E.active = n; volerVers(cameraPourIle(n), 1100); majRuban(); }
+  }
+  if (nouveaux.length || ouvertes() > avant.ouvertes) majHud();
+}
+
+// ---------- L'interface (HUD) ----------
+
+function dire(html, ms = 4200) {
+  const el = $('#ile-toast', scene);
+  if (!el) return;
+  el.innerHTML = html;
+  el.hidden = !html;
+  el.classList.remove('montre');
+  void el.offsetWidth;
+  el.classList.add('montre');
+  clearTimeout(dire.minuterie);
+  if (html) dire.minuterie = setTimeout(() => { el.hidden = true; }, ms);
+}
+
+let dernieresRessources = null;
+function majHud() {
+  if (!scene) return;
+  // ressources (en haut à droite), avec un petit saut quand elles montent
+  const valeurs = { etoiles: etoilesTexte(), ...Object.fromEntries(RESSOURCES.map((r) => [r, modeDev() ? '∞' : String(E.ressources[r])])) };
+  for (const [r, v] of Object.entries(valeurs)) {
+    const el = $(`.capsule[data-res="${r}"] b`, scene);
+    if (!el || el.textContent === v) continue;
+    const monte = dernieresRessources && Number(v) > Number(dernieresRessources[r]);
+    el.textContent = v;
+    el.closest('.capsule').setAttribute('aria-label', `${v} ${r === 'etoiles' ? 'étoiles' : NOMS_RESSOURCES[r]}`);
+    if (monte && !reduit()) el.closest('.capsule').animate([{ transform: 'scale(1)' }, { transform: 'scale(1.15)' }, { transform: 'scale(1)' }], { duration: 320 });
+  }
+  dernieresRessources = valeurs;
+  const hab = $('.capsule[data-res="habitants"] b', scene);
+  if (hab) hab.textContent = String(habitants(E));
+  // niveau et beauté (en haut à gauche)
+  const p = progressionIle(E);
+  $('#ile-niveau-n', scene).textContent = String(p.niveau);
+  $('#ile-beaute', scene).textContent = `Beauté ${p.beaute}`;
+  $('#ile-jauge', scene).style.width = `${p.vers === null ? 100 : Math.round(((p.beaute - p.de) / (p.vers - p.de)) * 100)}%`;
+  const prochain = paliers().find((x) => x.seuil > p.beaute);
+  $('#ile-prochain', scene).textContent = prochain ? `${prochain.seuil} : ${prochain.nom}` : 'Tout est découvert !';
+  // bâtisseurs
+  const libres = batisseursLibres(E), total = batisseurs(E);
+  $('#ile-batisseurs b', scene).textContent = `${libres}/${total}`;
+  $('#ile-batisseurs', scene).classList.toggle('occupes', libres === 0);
+  $('#ile-batisseurs', scene).setAttribute('aria-label', `Bâtisseurs libres : ${libres} sur ${total}`);
+  // tout ramasser
+  const t = maintenant();
+  let q = 0;
+  for (let n = 0; n < ouvertes(); n++) for (const k of Object.keys(E.iles[n].cases)) q += stock(E.iles[n], ...coord(k), t);
+  const b = $('#ile-ramasser', scene);
+  b.hidden = q === 0;
+  $('#ile-ramasser .compte', scene).textContent = String(q);
+  majRuban();
+}
+
+function majRuban() {
+  if (!scene) return;
+  const n = E.active, o = ouvertes();
+  $('#ile-nom', scene).textContent = ILES[n].nom;
+  $('#ile-prec', scene).hidden = o < 2;
+  $('#ile-suiv', scene).hidden = o < 2;
+  $('#ile-prec', scene).disabled = n === 0;
+  $('#ile-suiv', scene).disabled = n >= o - 1;
+}
+
+/** Les capsules de ressources : l'icône à droite, le nombre en gros, comme dans les jeux de construction. */
+function capsules() {
+  const capsule = (res, ic, classe = '') => `<span class="capsule ${classe}" data-res="${res}"><b>0</b><span class="capsule-ic">${ic}</span></span>`;
+  return [
+    `<button class="capsule capsule-etoiles" data-res="etoiles" id="ile-etoiles" aria-label="Étoiles"><b>0</b><span class="capsule-ic">${icone('etoiles', 28)}</span></button>`,
+    capsule('bois', tuile(ICONES_RES.bois, 46)),
+    capsule('pierre', tuile(ICONES_RES.pierre, 46)),
+    capsule('ble', tuile(ICONES_RES.ble, 46)),
+    capsule('habitants', sprite(S.habitant(4, 0), 34), 'petite'),
+  ].join('');
+}
+
+// ---------- Sélection et actions (en bas au centre) ----------
+
+function infosCase(n, k) {
+  const ile = E.iles[n], [x, y] = coord(k), c = ile.cases[k], w = ile.travaux[k], t = maintenant();
+  if (c) {
+    const def = BATIMENTS[c.type] || DECORS[c.type];
+    let sous = BATIMENTS[c.type] ? `Niveau ${c.niveau} sur ${niveauMax(c.type)}` : `${pointsCase(ile, x, y)} de beauté`;
+    if (c.chantier) sous = c.niveau === 0 ? `En construction · ${duree(c.chantier.fin - t)}` : `Vers le niveau ${c.chantier.vers} · ${duree(c.chantier.fin - t)}`;
+    return { nom: def.nom, sous };
+  }
+  if (w) return { nom: AMENAGEMENTS[w.action].nom, sous: `Encore ${duree(w.fin - t)}` };
+  if (E.tresor && E.tresor.n === n && E.tresor.cle === k) return { nom: 'Une bouteille !', sous: 'Touchez-la' };
+  const terrain = terrainDe(ile, x, y);
+  if (terrain === 'eau') return { nom: estCote(ile, x, y) ? 'Bord de mer' : 'La mer', sous: estCote(ile, x, y) && estDebloque(E, 'port') ? 'On peut y construire un port' : '' };
+  return { nom: NOMS_TERRAIN[terrain], sous: terrain === 'foret' ? 'Du bois pour les bûcherons' : terrain === 'montagne' ? 'De la pierre pour la carrière' : '' };
+}
+
+/** Les boutons ronds proposés pour la case choisie. */
+function actionsPour(n, k) {
+  const ile = E.iles[n], [x, y] = coord(k), c = ile.cases[k], w = ile.travaux[k], t = maintenant();
+  const out = [];
+  const prix = prixFinir(ile, x, y, t);
+  if (c) {
+    const bat = BATIMENTS[c.type];
+    out.push({ id: 'info', texte: 'Infos', icone: ICONE.info, couleur: 'bleu' });
+    if (bat && c.niveau > 0 && !c.chantier && c.niveau < niveauMax(c.type)) out.push({ id: 'ameliorer', texte: 'Améliorer', icone: ICONE.monter, couleur: 'vert', prix: bat.cout[c.niveau] });
+    if (bat && stock(ile, x, y, t) > 0) out.push({ id: 'ramasser', texte: 'Ramasser', icone: ICONE.panier, couleur: 'vert' });
+    if (prix !== null) out.push({ id: 'finir', texte: 'Finir', icone: ICONE.eclair, couleur: 'violet', prix: { etoiles: prix } });
+    out.push({ id: 'deplacer', texte: 'Déplacer', icone: ICONE.deplacer, couleur: 'bleu' });
+    out.push({ id: 'retirer', texte: 'Retirer', icone: ICONE.poubelle, couleur: 'rouge' });
+    return out;
+  }
+  if (w) return prix !== null ? [{ id: 'finir', texte: 'Finir', icone: ICONE.eclair, couleur: 'violet', prix: { etoiles: prix } }] : [];
+  const terrain = terrainDe(ile, x, y);
+  const amenagement = (action) => {
+    const a = AMENAGEMENTS[action];
+    if (!peutAmenager(ile, x, y, action)) return;
+    const gain = Object.entries(a.gain).map(([r, v]) => `+${v} ${NOMS_RESSOURCES[r]}`).join(' ');
+    out.push({ id: `amenager:${action}`, texte: a.nom.replace(/ (la forêt|les rochers|des arbres|un étang|l’étang)$/, ''), image: sprite(OUTILS[action], 40), couleur: 'bois', prix: Object.keys(a.cout).length ? a.cout : null, note: gain });
+  };
+  if (terrain === 'herbe') {
+    out.push({ id: 'construire-ici', texte: 'Construire', icone: ICONE.marteau, couleur: 'orange' });
+    amenagement('planter');
+    amenagement('creuser');
+  } else if (terrain === 'foret') amenagement('abattre');
+  else if (terrain === 'montagne') amenagement('casser');
+  else if (terrain === 'etang') amenagement('combler');
+  else if (estCote(ile, x, y) && estDebloque(E, 'port')) out.push({ id: 'construire-ici', texte: 'Un port', icone: ICONE.marteau, couleur: 'orange' });
+  return out;
+}
+
+let signatureActions = '';
+function majActions(seulementSiChange = false) {
+  const boite = $('#ile-actions', scene), etiquette = $('#ile-etiquette', scene);
+  const sel = ui.mode === 'libre' ? ui.selection : null;
+  if (!sel) {
+    if (!boite.hidden || !etiquette.hidden) { boite.hidden = true; etiquette.hidden = true; signatureActions = ''; scene.classList.remove('choix-actif'); }
+    return;
+  }
+  const infos = infosCase(sel.n, sel.cle);
+  const actions = actionsPour(sel.n, sel.cle);
+  const sig = `${sel.n}|${sel.cle}|${JSON.stringify(actions)}|${etoilesTexte()}|${JSON.stringify(E.ressources)}`;
+  etiquette.innerHTML = `<b>${infos.nom}</b>${infos.sous ? `<small>${infos.sous}</small>` : ''}`;
+  etiquette.hidden = false;
+  if (seulementSiChange && sig === signatureActions) return;
+  const nouveau = boite.hidden || !signatureActions.startsWith(`${sel.n}|${sel.cle}|`);
+  signatureActions = sig;
+  boite.innerHTML = actions.map((a) => `
+    <button class="action ${a.couleur}" data-action="${a.id}">
+      <span class="action-rond">${a.image || a.icone}</span>
+      <span class="action-texte">${a.texte}</span>
+      ${a.prix ? `<span class="action-prix">${coutHtml(a.prix, 16)}</span>` : a.note ? `<span class="action-prix"><span class="prix"><b>${a.note}</b></span></span>` : ''}
+    </button>`).join('');
+  boite.hidden = actions.length === 0;
+  scene.classList.toggle('choix-actif', !boite.hidden);
+  if (nouveau && !reduit()) {
+    [...boite.children].forEach((b, i) => b.animate([{ transform: 'translateY(40px) scale(.6)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 260, delay: i * 40, easing: 'cubic-bezier(.34, 1.56, .64, 1)', fill: 'backwards' }));
+  }
+}
+
+function choisir(n, k) {
+  ui.selection = { n, cle: k };
+  rendu.pop(n, k, 'choisi', temps);
+  majActions();
+  montrerCase(n, k);
+}
+function deselectionner() {
+  ui.selection = null;
+  majActions();
+}
+
+// ---------- Toucher le monde ----------
+
+function cibleSous(p) {
+  for (let i = rendu.cibles.length - 1; i >= 0; i--) {
+    const c = rendu.cibles[i];
+    if (p.x >= c.x0 - 6 && p.x <= c.x1 + 6 && p.y >= c.y0 - 6 && p.y <= c.y1 + 6) return c;
+  }
+  return null;
+}
+
+async function toucher(p) {
+  if (ui.fenetre) return;
+  fermerGuide();
+  ui.inertie = null;
+  const cible = cibleSous(p);
+  if (cible?.genre === 'tresor') return ouvrirBouteille();
+  if (cible?.genre === 'panneau' && ui.mode === 'agrandir') return agrandirVers(cible.n, cible.dir);
+  const w = versMonde(cam, p.x, p.y);
+  const sous = cible?.genre === 'bulle' ? { n: cible.n, cle: cible.cle } : caseSous(E, ouvertes(), w.x, w.y);
+  if (ui.mode === 'poser' || ui.mode === 'deplacer') return toucherEnPose(sous);
+  if (ui.mode === 'agrandir') { if (!sous || sous.n !== ui.agrandir) finirAgrandir(); return; }
+  if (!sous) {
+    // une île encore dans les nuages ?
+    for (let n = ouvertes(); n < E.iles.length; n++) {
+      const r = rectIle(E.iles[n], n);
+      if (w.x >= r.x0 && w.x < r.x1 && w.y >= r.y0 && w.y < r.y1) {
+        const il = ILES[n], b = beauteTotale(E);
+        return dire(`<b>${il.nom}</b> se découvrira quand votre île aura ${il.seuil} de beauté (encore ${il.seuil - b}).`);
+      }
     }
-    const avant = deblocages();
-    let r;
-    if (choix.genre === 'construire') r = construire(E, E.active, x, y, choix.type, solde(), payerEtoiles, t);
-    else if (choix.genre === 'decorer') r = decorer(E, E.active, x, y, choix.type, solde(), payerEtoiles);
-    else r = amenager(E, E.active, x, y, choix.type, solde(), payerEtoiles, t);
+    return deselectionner();
+  }
+  const ile = E.iles[sous.n], [x, y] = coord(sous.cle), c = ile.cases[sous.cle];
+  // toucher un bâtiment qui a une récolte prête : on ramasse tout de suite
+  if (c && BATIMENTS[c.type] && stock(ile, x, y, maintenant()) > 0 && !(ui.selection?.n === sous.n && ui.selection.cle === sous.cle)) {
+    recolter(sous.n, sous.cle);
+    return;
+  }
+  if (ui.selection && ui.selection.n === sous.n && ui.selection.cle === sous.cle) return deselectionner();
+  if (sous.n !== E.active) { E.active = sous.n; majRuban(); }
+  vibrer(8);
+  choisir(sous.n, sous.cle);
+}
+
+async function action(id) {
+  const sel = ui.selection;
+  if (!sel) return;
+  const { n, cle: k } = sel, ile = E.iles[n], [x, y] = coord(k), t = maintenant();
+  if (id === 'info') return fenetreInfo(n, k);
+  if (id === 'ameliorer') return fenetreAmelioration(n, k);
+  if (id === 'ramasser') return recolter(n, k);
+  if (id === 'deplacer') return commencerDeplacement(n, k);
+  if (id === 'retirer') return retirerCase(n, k);
+  if (id === 'construire-ici') return ouvrirBoutique({ n, cle: k, onglet: terrainDe(ile, x, y) === 'eau' ? 'batiments' : null });
+  if (id === 'finir') {
+    const prix = prixFinir(ile, x, y, t);
+    if (!(await confirmer(`Finir tout de suite ?`, `Cela coûte ${pluriel(prix, 'étoile')}.`, `Finir (${prix} ★)`))) return;
+    const r = finir(E, n, x, y, payerEtoiles, maintenant());
+    if (!r.ok) return dire(`Il manque ${texteManque(r.manque || {})}. Jouez une partie pour gagner des étoiles.`);
+    sauver();
+    await tic();
+    return;
+  }
+  if (id.startsWith('amenager:')) {
+    const a = id.split(':')[1];
+    const r = amenager(E, n, x, y, a, solde(), payerEtoiles, t);
     if (!r.ok) return dire(r.manque ? `Il manque ${texteManque(r.manque)}.` : 'Ce n’est pas possible ici.');
     sauver();
-    const fait = choix;
-    if (!peutPayer(E, solde(), coutDe(fait.genre, fait.type))) choix = null; // on garde l'outil en main si l'on peut recommencer
-    dessinerEntete();
-    dessinerGrille();
-    dessinerBoutique();
-    animer($(`.case[data-k="${k}"] .fond`, racine), [{ transform: 'translateY(-40%) scale(.5)', opacity: 0 }, { transform: 'translateY(4%) scale(1.06)', opacity: 1, offset: 0.7 }, { transform: 'none', opacity: 1 }], { duration: 480, easing: COURBE_REBOND });
-    let texte;
-    if (fait.genre === 'construire') texte = `Le chantier commence : fini dans ${duree(BATIMENTS[fait.type].duree * MINUTE)}. Les habitants s’en occupent.`;
-    else if (fait.genre === 'decorer') { envol(k, `+${r.gain} beauté`); texte = `+${r.gain} de beauté !`; }
-    else texte = `${AMENAGEMENTS[fait.type].nom} : c’est parti (${duree(AMENAGEMENTS[fait.type].minutes * MINUTE)}).`;
-    dire(choix ? `${texte} Vous pouvez continuer, ou toucher « Terminer ».` : texte);
+    rendu.pop(n, k, 'pose', temps);
+    const c = centreCase(ile, n, x, y);
+    rendu.gerbe(c.x, c.y, a === 'abattre' || a === 'planter' ? 'feuilles' : a === 'casser' ? 'cailloux' : 'poussiere', temps);
+    vibrer(12);
+    dire(`${AMENAGEMENTS[a].nom} : c’est parti, prêt dans ${duree(AMENAGEMENTS[a].minutes * MINUTE)}. Les habitants s’en occupent.`);
+    vie.peupler(E);
+    majHud();
+    majActions();
+  }
+}
+
+// ---------- Ramasser ----------
+
+/** Des icônes de ressource volent d'un point du monde vers leur compteur, en haut à droite. */
+function voler(depart, res, q) {
+  if (reduit() || !scene) return Promise.resolve();
+  const cible = $(`.capsule[data-res="${res}"] .capsule-ic`, scene);
+  if (!cible) return Promise.resolve();
+  const a = versEcran(cam, depart.x, depart.y), b = posScene(cible);
+  const couche = $('.hud', scene), vols = [];
+  for (let i = 0; i < Math.min(q, 6); i++) {
+    const el = document.createElement('span');
+    el.className = 'vol';
+    el.innerHTML = icone(res, 30);
+    el.style.left = `${a.x - 15}px`;
+    el.style.top = `${a.y - 15}px`;
+    couche.append(el);
+    const ecart = (Math.random() - 0.5) * 60;
+    vols.push(el.animate([
+      { transform: 'translate(0, 0) scale(.5)', opacity: 0 },
+      { transform: `translate(${ecart}px, -50px) scale(1.25)`, opacity: 1, offset: 0.3 },
+      { transform: `translate(${b.x - a.x}px, ${b.y - a.y}px) scale(.8)`, opacity: 1 },
+    ], { duration: 820, delay: i * 80, easing: 'cubic-bezier(.5, 0, .75, 0)', fill: 'backwards' }).finished.then(() => el.remove(), () => el.remove()));
+  }
+  return Promise.all(vols).then(() => {
+    const capsule = cible.closest('.capsule');
+    capsule?.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.2)' }, { transform: 'scale(1)' }], { duration: 260 });
+  });
+}
+
+async function recolter(n, k) {
+  const ile = E.iles[n], [x, y] = coord(k);
+  const { res, n: q } = ramasser(E, n, x, y, maintenant());
+  if (!q) return;
+  sauver();
+  vibrer(10);
+  const c = centreCase(ile, n, x, y);
+  rendu.texte(c.x, c.y - 0.6, `+${q} ${NOMS_RESSOURCES[res]}`, temps);
+  rendu.gerbe(c.x, c.y - 0.4, 'etoiles', temps);
+  dire(`+${q} ${NOMS_RESSOURCES[res]} !`, 2500);
+  await voler(c, res, q);
+  majHud();
+  majActions();
+}
+
+async function toutRecolter() {
+  const t = maintenant(), envols = [];
+  for (let n = 0; n < ouvertes(); n++) {
+    const ile = E.iles[n];
+    for (const k of Object.keys(ile.cases)) {
+      const q = stock(ile, ...coord(k), t);
+      if (q) envols.push([centreCase(ile, n, ...coord(k)), BATIMENTS[ile.cases[k].type].prod.res, q]);
+    }
+  }
+  const total = toutRamasser(E, t);
+  if (!Object.keys(total).length) return;
+  sauver();
+  vibrer(15);
+  dire(`Récolte : ${Object.entries(total).map(([r, q]) => `+${q} ${NOMS_RESSOURCES[r]}`).join(', ')} !`);
+  for (const [c, , q] of envols) rendu.texte(c.x, c.y - 0.6, `+${q}`, temps);
+  await Promise.all(envols.slice(0, 8).map(([c, r, q], i) => new Promise((ok) => setTimeout(ok, i * 110)).then(() => voler(c, r, q))));
+  majHud();
+  majActions();
+}
+
+async function ouvrirBouteille() {
+  const tresor = E.tresor;
+  if (!tresor) return;
+  const ile = E.iles[tresor.n], [x, y] = coord(tresor.cle), c = centreCase(ile, tresor.n, x, y);
+  const gain = ramasserTresor(E, maintenant());
+  if (gain.etoiles) ajouterEtoiles(gain.etoiles, 'bouteille');
+  sauver();
+  vibrer(25);
+  rendu.gerbe(c.x, c.y, 'eau', temps);
+  rendu.gerbe(c.x, c.y - 0.3, 'etoiles', temps);
+  const texte = Object.entries(gain).map(([r, q]) => `+${q} ${r === 'etoiles' ? '★' : NOMS_RESSOURCES[r]}`).join(', ');
+  const messages = ['« Bonne journée à vous ! »', '« Un petit cadeau de la mer. »', '« Votre île est magnifique ! »', '« Pensée du jour : prenez votre temps. »', '« Avec l’amitié d’un vieux marin. »'];
+  dire(`Dans la bouteille : <b>${texte}</b><br><small>${messages[Math.floor(Math.random() * messages.length)]}</small>`, 6000);
+  await Promise.all(Object.entries(gain).map(([r, q]) => voler(c, r, q)));
+  majHud();
+}
+
+// ---------- Poser une construction (le fantôme) ----------
+
+function gainsPour(n, type) {
+  const ile = E.iles[n], gains = new Map();
+  for (let y = ile.ext.y0 - 1; y <= ile.ext.y1 + 1; y++) for (let x = ile.ext.x0 - 1; x <= ile.ext.x1 + 1; x++) {
+    const g = apercu(ile, x, y, type);
+    if (g !== null) gains.set(cle(x, y), g);
+  }
+  return gains;
+}
+function gainsDeplacement(n, de) {
+  const ile = E.iles[n], gains = new Map();
+  for (let y = ile.ext.y0 - 1; y <= ile.ext.y1 + 1; y++) for (let x = ile.ext.x0 - 1; x <= ile.ext.x1 + 1; x++) {
+    const g = apercuDeplacement(ile, de, x, y);
+    if (g !== null) gains.set(cle(x, y), g);
+  }
+  return gains;
+}
+/** La meilleure case : la plus belle, puis la plus proche du centre de l'écran. */
+function meilleureDe(n, gains, preferee = null) {
+  if (preferee && gains.has(preferee)) return preferee;
+  const centre = versMonde(cam, cam.l / 2, cam.h / 2), ile = E.iles[n];
+  let mieux = null, score = -Infinity;
+  for (const [k, g] of gains) {
+    const c = centreCase(ile, n, ...coord(k));
+    const s = g * 10 - Math.hypot(c.x - centre.x, c.y - centre.y);
+    if (s > score) { score = s; mieux = k; }
+  }
+  return mieux;
+}
+
+function entrerModePose(pose) {
+  fermerGuide();
+  ui.mode = pose.genre === 'deplacer' ? 'deplacer' : 'poser';
+  ui.pose = pose;
+  ui.selection = null;
+  majActions();
+  scene.classList.add('en-pose');
+  const nom = pose.genre === 'deplacer' ? `Déplacer : ${nomDe(pose.type)}` : nomDe(pose.type);
+  $('#ile-bandeau', scene).innerHTML = `<b>${nom}</b><span>touchez une case entourée</span>`;
+  $('#ile-bandeau', scene).hidden = false;
+  $('#ile-valider', scene).hidden = false;
+  majValider();
+  volerVers(cameraPourIle(pose.n));
+}
+function sortirModePose() {
+  ui.mode = 'libre';
+  ui.pose = null;
+  scene.classList.remove('en-pose');
+  $('#ile-bandeau', scene).hidden = true;
+  $('#ile-valider', scene).hidden = true;
+}
+function majValider() {
+  const ok = ui.pose && ui.pose.gains.has(ui.pose.cle);
+  $('#ile-ok', scene).disabled = !ok;
+}
+
+async function commencerPose(genre, type, cible = null) {
+  if (!estDebloque(E, type)) return dire(`Pas encore : il faut plus de beauté.`);
+  const cout = coutDe(genre, type);
+  if (!peutPayer(E, solde(), cout)) {
+    return dire(`Il manque ${texteManque(manque(E, solde(), cout))}. ${cout.etoiles && manque(E, solde(), cout).etoiles ? 'Jouez une partie pour gagner des étoiles.' : 'Récoltez ou aménagez l’île.'}`);
+  }
+  if (genre === 'construire' && !batisseursLibres(E)) return fenetreBatisseurs(true);
+  // l'île visée : celle de la case touchée, sinon celle qu'on regarde ; s'il n'y a plus de place, une autre île ouverte
+  let n = cible?.n ?? E.active;
+  let gains = gainsPour(n, type);
+  if (!gains.size) {
+    for (let m = 0; m < ouvertes() && !gains.size; m++) { gains = gainsPour(m, type); if (gains.size) n = m; }
+  }
+  if (!gains.size) return dire(BATIMENTS[type]?.cote ? 'Le port se construit au bord de l’île : il n’y a plus de place libre.' : 'Plus de place libre : abattez une forêt, comblez un étang ou agrandissez l’île.');
+  const meilleur = Math.max(...gains.values());
+  entrerModePose({ genre, type, n, gains, meilleur, cle: meilleureDe(n, gains, cible?.cle), image: imageType(type) });
+}
+
+function commencerDeplacement(n, k) {
+  const c = E.iles[n].cases[k];
+  const gains = gainsDeplacement(n, k);
+  const img = imageCase(E.iles[n], ...coord(k), maintenant());
+  entrerModePose({ genre: 'deplacer', type: c.type, n, de: k, gains, meilleur: Math.max(...gains.values()), cle: k, image: img });
+}
+
+function toucherEnPose(sous) {
+  const p = ui.pose;
+  if (!sous) return;
+  if (sous.n !== p.n) {
+    if (p.genre === 'deplacer') return dire('On déplace sur la même île.');
+    const gains = gainsPour(sous.n, p.type);
+    if (!gains.size) return dire('Plus de place sur cette île.');
+    Object.assign(p, { n: sous.n, gains, meilleur: Math.max(...gains.values()), cle: meilleureDe(sous.n, gains, sous.cle) });
+    E.active = sous.n;
+    majRuban();
+    return majValider();
+  }
+  if (sous.cle === p.cle && p.gains.has(p.cle)) return confirmerPose();
+  if (!p.gains.has(sous.cle)) { dire('Choisissez une case entourée de pointillés.', 2500); return; }
+  p.cle = sous.cle;
+  vibrer(6);
+  majValider();
+}
+
+async function confirmerPose() {
+  const p = ui.pose;
+  if (!p || !p.gains.has(p.cle)) return;
+  const [x, y] = coord(p.cle), t = maintenant(), ile = E.iles[p.n], c = centreCase(ile, p.n, x, y);
+  const avant = deblocages();
+  if (p.genre === 'deplacer') {
+    const r = deplacer(E, p.n, p.de, x, y);
+    if (!r.ok) return;
+    sauver();
+    sortirModePose();
+    rendu.pop(p.n, p.cle, 'pose', temps);
+    rendu.gerbe(c.x, c.y + 0.3, 'poussiere', temps);
+    if (r.gain) rendu.texte(c.x, c.y - 0.6, `${r.gain > 0 ? '+' : '−'}${Math.abs(r.gain)} beauté`, temps, r.gain > 0 ? '#ffe066' : '#ffffff');
+    vibrer(15);
+    vie.peupler(E);
+    majHud();
+    choisir(p.n, p.cle);
     await annoncerDeblocages(avant);
     return;
   }
-  const c = I.cases[k];
-  if (c && stock(I, x, y, t) > 0) {
-    const { res, n } = ramasser(E, E.active, x, y, t);
-    sauver();
-    majDynamique();
-    dire(`+${n} ${NOM_RES[res]} !`);
-    await voler(k, res, n);
-    dessinerEntete();
-    pop($(`.res-puce[data-res="${res}"]`, racine), 1.3);
-    return;
+  const r = p.genre === 'construire'
+    ? construire(E, p.n, x, y, p.type, solde(), payerEtoiles, t)
+    : decorer(E, p.n, x, y, p.type, solde(), payerEtoiles);
+  if (!r.ok) {
+    sortirModePose();
+    if (r.raison === 'batisseurs') return fenetreBatisseurs(true);
+    return dire(r.manque ? `Il manque ${texteManque(r.manque)}.` : 'Ce n’est pas possible ici.');
   }
-  if (c) return ouvrirFiche(x, y);
-  if (I.travaux[k]) return dire(`${AMENAGEMENTS[I.travaux[k].action].nom} : encore ${duree(I.travaux[k].fin - t)}.`);
-  const infos = {
-    herbe: 'De l’herbe libre : choisissez quoi construire en bas de l’écran.',
-    foret: 'Une forêt : les cabanes de bûcheron y trouvent leur bois. Vous pouvez aussi l’abattre (onglet Aménager).',
-    montagne: 'Des rochers : une carrière à côté donne de la pierre. Vous pouvez aussi les casser (onglet Aménager).',
-    etang: 'Un étang : il embellit l’île et ses voisins.',
-    eau: 'La mer. Le port se construit au bord de l’île.',
-  };
-  dire(infos[terrainDe(I, x, y)] || '');
-}
-
-async function ouvrirFiche(x, y) {
-  const I = ile(), k = cle(x, y), c = I.cases[k], t = maintenant();
-  const estDecor = Boolean(DECORS[c.type]);
-  const def = BATIMENTS[c.type] || DECORS[c.type];
-  let infos = '';
-  if (!estDecor) {
-    if (c.chantier) infos += `<p class="note">${c.niveau === 0 ? 'En construction' : `Agrandissement vers le niveau ${c.chantier.vers}`} : encore <b>${duree(c.chantier.fin - t)}</b>.</p>`;
-    if (def.prod && c.niveau > 0) {
-      infos += produit(I, x, y)
-        ? `<p class="note">Produit 1 ${NOM_RES[def.prod.res]} toutes les ${duree(periode(c))}. Réserve : <b>${stock(I, x, y, t)} / ${plafond(c)}</b>.</p>`
-        : `<p class="note manque-texte">Ne produit rien : il faut ${def.prod.besoin === 'foret' ? 'une forêt à deux cases au plus' : 'des rochers juste à côté'}.</p>`;
+  sauver();
+  vibrer(18);
+  rendu.pop(p.n, p.cle, 'pose', temps);
+  rendu.gerbe(c.x, c.y + 0.3, 'poussiere', temps);
+  if (p.genre === 'decorer') {
+    rendu.gerbe(c.x, c.y - 0.2, 'etoiles', temps);
+    rendu.texte(c.x, c.y - 0.6, `+${r.gain} beauté`, temps, '#ffe066');
+    // on garde la décoration en main si l'on peut en poser une autre
+    const gains = gainsPour(p.n, p.type);
+    if (peutPayer(E, solde(), coutDe('decorer', p.type)) && gains.size) {
+      Object.assign(p, { gains, meilleur: Math.max(...gains.values()), cle: meilleureDe(p.n, gains) });
+      majValider();
+      dire(`+${r.gain} de beauté ! Vous pouvez en poser une autre, ou toucher ✗.`);
+    } else {
+      sortirModePose();
+      dire(`+${r.gain} de beauté !`);
     }
-    if (def.habitants && c.niveau > 0) infos += `<p class="note">${pluriel(def.habitants * c.niveau, 'habitant')} ${def.habitants * c.niveau > 1 ? 'vivent' : 'vit'} ici.</p>`;
+  } else {
+    sortirModePose();
+    dire(`Le chantier commence : prêt dans ${duree(dureeChantier(p.type, 1))}. Un bâtisseur s’en occupe.`);
   }
-  const prochain = !estDecor && !c.chantier && c.niveau < niveauMax(c.type) ? def.cout[c.niveau] : null;
-  const q = stock(I, x, y, t);
-  const fond = document.createElement('div');
-  fond.className = 'sheet temp';
-  fond.innerHTML = `
-    <div class="sheet-box" role="dialog" aria-modal="true">
-      <div class="bat-tete">${imageHtml(imageCase(x, y, t), 64)}<div><h3>${def.nom}</h3><p>${estDecor ? '' : `Niveau ${c.niveau} sur ${niveauMax(c.type)} · `}<b>${pointsCase(I, x, y)} points</b> de beauté</p></div></div>
-      <p class="note">${def.desc}.</p>
-      ${infos}
-      ${prochain && !peutPayer(E, solde(), prochain) ? `<p class="note manque-texte">Pour agrandir, il manque ${texteManque(manque(E, solde(), prochain))}.</p>` : ''}
-      <div class="sheet-actions">
-        <button class="btn" data-r="">Fermer</button>
-        <button class="btn" data-r="retirer">Retirer (on récupère tout)</button>
-        ${c.chantier ? `<button class="btn" data-r="accelerer" ${solde() < prixAcceleration(c, t) ? 'disabled' : ''}>Finir tout de suite (${prixAcceleration(c, t)} ★)</button>` : ''}
-        ${q ? `<button class="btn" data-r="ramasser">Ramasser (${q})</button>` : ''}
-        ${prochain ? `<button class="btn primary" data-r="ameliorer" ${peutPayer(E, solde(), prochain) ? '' : 'disabled'}>Agrandir : ${coutHtml(prochain)}</button>` : ''}
-      </div>
-    </div>`;
-  document.body.append(fond);
-  animer(fond.firstElementChild, [{ transform: 'translateY(50px)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 300 });
-  const r = await new Promise((ok) => fond.addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-r]');
-    if ((!b && e.target !== fond) || b?.disabled) return;
-    fond.remove();
-    ok(b ? b.dataset.r : '');
-  }));
-  const t2 = maintenant();
-  if (r === 'ameliorer') {
-    const res = ameliorer(E, E.active, x, y, solde(), payerEtoiles, t2);
-    if (!res.ok) return dire(res.manque ? `Il manque ${texteManque(res.manque)}.` : 'Ce n’est pas possible pour l’instant.');
-    sauver();
-    toutDessiner();
-    dire(`Les travaux commencent : niveau ${c.niveau + 1} dans ${duree(c.chantier.fin - t2)}.`);
-  } else if (r === 'accelerer') {
-    if (accelerer(E, E.active, x, y, payerEtoiles, t2).ok) { sauver(); await tic(); }
-  } else if (r === 'ramasser') {
-    await toucherCase(k, $(`.case[data-k="${k}"]`, racine));
-  } else if (r === 'retirer') {
-    if (!(await demander({ titre: `Retirer « ${def.nom} » ?`, texte: 'Vous récupérez ce qu’il a coûté.', oui: 'Oui, retirer', non: 'Non, garder' }))) return;
-    await animer($(`.case[data-k="${k}"] .fond`, racine), [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.3)', opacity: 0 }], { duration: 260 });
-    const rendu = retirer(E, E.active, x, y);
-    if (rendu?.etoiles) ajouterEtoiles(rendu.etoiles, 'remboursement');
-    sauver();
-    toutDessiner();
-    dire('C’est retiré, tout vous a été rendu.');
-  }
+  vie.peupler(E);
+  majHud();
+  await annoncerDeblocages(avant);
 }
 
-async function agrandirVers(dir) {
-  const I = ile(), cout = coutAgrandir(I, dir);
-  if (!peutPayer(E, solde(), cout)) {
-    secouer($(`.carte-bat[data-type="${dir}"]`, racine));
-    return dire(`Il manque ${texteManque(manque(E, solde(), cout))}. Cassez des rochers ou construisez une carrière pour la pierre.`);
-  }
-  if (!(await demander({ titre: `Agrandir l’île ${NOMS_DIRECTIONS[dir]} ?`, texte: 'Une nouvelle rangée de terre va sortir de l’eau.', oui: 'Oui, agrandir', non: 'Non' }))) return;
-  const r = agrandir(E, E.active, dir, solde(), payerEtoiles);
+// ---------- Agrandir l'île ----------
+
+function commencerAgrandir() {
+  fermerGuide();
+  ui.mode = 'agrandir';
+  ui.agrandir = E.active;
+  ui.selection = null;
+  majActions();
+  scene.classList.add('en-pose');
+  $('#ile-bandeau', scene).innerHTML = '<b>Agrandir l’île</b><span>touchez un panneau</span>';
+  $('#ile-bandeau', scene).hidden = false;
+  $('#ile-terminer', scene).hidden = false;
+  volerVers(cameraPourIle(E.active, 2.4, CADRE_AGRANDIR));
+}
+function finirAgrandir() {
+  ui.mode = 'libre';
+  ui.agrandir = null;
+  scene.classList.remove('en-pose');
+  $('#ile-bandeau', scene).hidden = true;
+  $('#ile-terminer', scene).hidden = true;
+}
+async function agrandirVers(n, dir) {
+  const ile = E.iles[n], cout = coutAgrandir(ile, dir);
+  if (!peutPayer(E, solde(), cout)) return dire(`Il manque ${texteManque(manque(E, solde(), cout))}. Cassez des rochers ou construisez une carrière pour la pierre.`);
+  const ok = await fenetre({
+    titre: 'Agrandir l’île',
+    corps: `<p>Une nouvelle rangée de terre va sortir de l’eau ${NOMS_DIRECTIONS[dir]}.</p><p class="prix-ligne">${coutHtml(cout, 26)}</p>`,
+    boutons: [{ id: 'non', texte: 'Non' }, { id: 'oui', texte: 'Agrandir', classe: 'vert' }],
+  });
+  if (ok !== 'oui') return;
+  const avant = deblocages();
+  const r = agrandir(E, n, dir, solde(), payerEtoiles);
   if (!r.ok) return dire('Ce n’est pas possible pour l’instant.');
   sauver();
-  toutDessiner();
-  // la nouvelle terre sort de l'eau, case après case
+  vibrer(30);
   r.cases.forEach(([x, y], i) => {
-    animer($(`.case[data-k="${cle(x, y)}"] .fond`, racine), [{ transform: 'scale(.2) translateY(30%)', opacity: 0 }, { transform: 'scale(1.1)', opacity: 1, offset: 0.7 }, { transform: 'none', opacity: 1 }],
-      { duration: 520, delay: i * 90, easing: COURBE_REBOND, fill: 'backwards' });
+    rendu.pop(n, cle(x, y), 'terre', temps, reduit() ? 0 : i * 0.08);
+    const c = centreCase(ile, n, x, y);
+    setTimeout(() => rendu.gerbe(c.x, c.y, 'eau', temps), reduit() ? 0 : i * 80);
   });
+  vie.peupler(E);
+  majHud();
   dire('L’île est plus grande !');
+  volerVers(cameraPourIle(n, 2.4, CADRE_AGRANDIR));
+  await annoncerDeblocages(avant);
 }
 
-async function toutRamasserAction() {
-  const t = maintenant();
-  // l'île affichée d'abord, pour voir les icônes s'envoler
-  const I = ile(), envols = [];
-  for (const k of Object.keys(I.cases)) {
-    const q = stock(I, ...coord(k), t);
-    if (q) envols.push([k, BATIMENTS[I.cases[k].type].prod.res, q]);
+// ---------- Retirer ----------
+
+async function retirerCase(n, k) {
+  const c = E.iles[n].cases[k], def = BATIMENTS[c.type] || DECORS[c.type];
+  if (!(await confirmer(`Retirer « ${def.nom} » ?`, 'Vous récupérez tout ce qu’il a coûté.', 'Oui, retirer', 'rouge'))) return;
+  const ile = E.iles[n], [x, y] = coord(k), centre = centreCase(ile, n, x, y);
+  const rendu2 = retirer(E, n, x, y);
+  if (rendu2?.etoiles) ajouterEtoiles(rendu2.etoiles, 'remboursement');
+  sauver();
+  rendu.gerbe(centre.x, centre.y, 'poussiere', temps);
+  rendu.pop(n, k, 'pose', temps);
+  deselectionner();
+  vie.peupler(E);
+  majHud();
+  dire('C’est retiré : tout vous a été rendu.');
+}
+
+// ---------- Fenêtres ----------
+
+/**
+ * Une fenêtre dans la scène (elle tourne avec elle).
+ * @returns {Promise<string>} l'identifiant du bouton touché ('' si fermée)
+ */
+function fenetre({ titre, corps, boutons = [], classe = '', large = false }) {
+  const fond = $('#ile-fenetre', scene);
+  return new Promise((ok) => {
+    ui.fenetre = true;
+    fond.hidden = false;
+    fond.className = `ile-fenetre ${large === true ? 'large' : large ? `large-${large}` : ''}`;
+    fond.innerHTML = `
+      <div class="panneau ${classe}" role="dialog" aria-modal="true" aria-labelledby="ile-fen-titre">
+        <header><h3 id="ile-fen-titre">${titre}</h3><button class="fermer" data-r="" aria-label="Fermer">${ICONE.croix}</button></header>
+        <div class="panneau-corps">${corps}</div>
+        ${boutons.length ? `<footer>${boutons.map((b) => `<button class="gros ${b.classe || 'gris'}" data-r="${b.id}" ${b.desactive ? 'disabled' : ''}>${b.texte}</button>`).join('')}</footer>` : ''}
+      </div>`;
+    const panneau = fond.firstElementChild;
+    if (!reduit()) panneau.animate([{ transform: 'scale(.7)', opacity: 0 }, { transform: 'scale(1.03)', opacity: 1, offset: 0.7 }, { transform: 'none', opacity: 1 }], { duration: 300, easing: 'ease-out' });
+    const fermer = (r) => {
+      fond.removeEventListener('click', clic);
+      ui.fermerFenetre = null;
+      ui.fenetre = false;
+      fond.hidden = true;
+      fond.innerHTML = '';
+      ok(r);
+    };
+    const clic = (e) => {
+      const b = e.target.closest('[data-r]');
+      if (b && !b.disabled) return fermer(b.dataset.r);
+      if (e.target === fond) fermer('');
+      // les autres boutons (cartes de la boutique…) sont gérés par qui a ouvert la fenêtre
+    };
+    fond.addEventListener('click', clic);
+    ui.fermerFenetre = fermer;
+    (panneau.querySelector('footer .vert') || panneau.querySelector('footer button') || panneau.querySelector('.fermer'))?.focus({ preventScroll: true });
+  });
+}
+const confirmer = async (titre, texte, oui, couleur = 'vert') => (await fenetre({ titre, corps: `<p>${texte}</p>`, boutons: [{ id: 'non', texte: 'Non' }, { id: 'oui', texte: oui, classe: couleur }] })) === 'oui';
+
+function fenetreInfo(n, k) {
+  const ile = E.iles[n], [x, y] = coord(k), c = ile.cases[k], t = maintenant();
+  const bat = BATIMENTS[c.type], def = bat || DECORS[c.type];
+  const lignes = [];
+  lignes.push(`<li><span>Beauté rapportée</span><b>${pointsCase(ile, x, y)}</b></li>`);
+  if (bat) {
+    lignes.push(`<li><span>Niveau</span><b>${c.niveau} sur ${niveauMax(c.type)}</b></li>`);
+    if (bat.habitants && c.niveau) lignes.push(`<li><span>Habitants</span><b>${bat.habitants * c.niveau}</b></li>`);
+    if (bat.prod && c.niveau) {
+      lignes.push(produit(ile, x, y)
+        ? `<li><span>Production</span><b>1 ${NOMS_RESSOURCES[bat.prod.res]} toutes les ${duree(periode(c))}</b></li><li><span>Réserve</span><b>${stock(ile, x, y, t)} sur ${plafond(c)}</b></li>`
+        : `<li class="alerte"><span>Ne produit rien</span><b>Il faut ${bat.prod.besoin === 'foret' ? 'une forêt à deux cases au plus' : 'des rochers juste à côté'}</b></li>`);
+    }
+    if (c.chantier) lignes.push(`<li><span>${c.niveau === 0 ? 'Construction' : `Vers le niveau ${c.chantier.vers}`}</span><b>encore ${duree(c.chantier.fin - t)}</b></li>`);
   }
-  const total = toutRamasser(E, t);
-  sauver();
-  majDynamique();
-  dire(`Récolte : ${Object.entries(total).map(([r, q]) => `+${q} ${NOM_RES[r]}`).join(', ')} !`);
-  await Promise.all(envols.slice(0, 6).map(([k, res, q], i) => attendre(i * 120).then(() => voler(k, res, q))));
-  dessinerEntete();
+  const aime = Object.entries(def.aime || {});
+  const voisins = voisinsDe(x, y).map(([vx, vy]) => { const v = ile.cases[cle(vx, vy)]; return v && v.niveau > 0 ? v.type : terrainDe(ile, vx, vy); });
+  const nomAime = (k2) => (BATIMENTS[k2] || DECORS[k2])?.nom || { foret: 'Forêt', montagne: 'Rochers', etang: 'Étang', herbe: 'Herbe' }[k2] || k2;
+  const imgAime = (k2) => (BATIMENTS[k2] || DECORS[k2] ? imageHtml(imageType(k2), 36) : imageHtml(imageCase({ cases: {}, travaux: {}, terrain: { '0,0': k2 }, ext: { x0: 0, y0: 0, x1: 0, y1: 0 } }, 0, 0, t), 36));
+  fenetre({
+    titre: def.nom,
+    large: 'moyen',
+    corps: `<div class="deux-colonnes"><div class="gauche fiche-tete">${imageHtml(imageCase(ile, x, y, t), 96)}<p class="fiche-desc">${def.desc}.</p></div><div>
+      <ul class="fiche-lignes">${lignes.join('')}</ul>
+      ${aime.length ? `<p class="fiche-sous">Aime avoir à côté (chaque voisin rapporte de la beauté) :</p>
+      <ul class="aime">${aime.map(([k2, v]) => `<li class="${voisins.includes(k2) ? 'ok' : ''}">${imgAime(k2)}<span>${nomAime(k2)}</span><b>+${v}</b></li>`).join('')}</ul>` : ''}</div></div>`,
+    boutons: [{ id: 'ok', texte: 'Fermer', classe: 'bleu' }],
+  });
 }
 
-function changerIle(sens) {
-  const ouvertes = ilesOuvertes(E);
-  const n = Math.max(0, Math.min(ouvertes - 1, E.active + sens));
-  if (n === E.active) return;
-  E.active = n;
-  choix = null;
+async function fenetreAmelioration(n, k) {
+  const ile = E.iles[n], [x, y] = coord(k), c = ile.cases[k], bat = BATIMENTS[c.type];
+  const vers = c.niveau + 1, cout = bat.cout[c.niveau];
+  const lignes = [`<li><span>Beauté de base</span><b>${bat.base * c.niveau} <i>→</i> <em>${bat.base * vers}</em></b></li>`];
+  if (bat.habitants) lignes.push(`<li><span>Habitants</span><b>${bat.habitants * c.niveau} <i>→</i> <em>${bat.habitants * vers}</em></b></li>`);
+  if (bat.prod) {
+    lignes.push(`<li><span>Production</span><b>1 ${NOMS_RESSOURCES[bat.prod.res]} / ${duree(periode(c))} <i>→</i> <em>${duree(periode({ ...c, niveau: vers }))}</em></b></li>`);
+    lignes.push(`<li><span>Réserve</span><b>${plafond(c)} <i>→</i> <em>${plafond({ ...c, niveau: vers })}</em></b></li>`);
+  }
+  lignes.push(`<li><span>Durée des travaux</span><b>${duree(dureeChantier(c.type, vers))}</b></li>`);
+  const payable = peutPayer(E, solde(), cout), libres = batisseursLibres(E);
+  const r = await fenetre({
+    titre: `Améliorer : ${bat.nom}`,
+    large: 'moyen',
+    corps: `<div class="deux-colonnes"><div class="gauche"><div class="evolution">
+        <figure>${imageHtml(imageType(c.type, c.niveau), 88)}<figcaption>Niveau ${c.niveau}</figcaption></figure>
+        <span class="evolution-fleche" aria-hidden="true">${ICONE.droite}</span>
+        <figure class="suivant">${imageHtml(imageType(c.type, vers), 88)}<figcaption>Niveau ${vers}</figcaption></figure>
+      </div><p class="prix-ligne">${coutHtml(cout, 26)}</p></div><div>
+      <ul class="fiche-lignes">${lignes.join('')}</ul>
+      ${!payable ? `<p class="alerte-texte">Il manque ${texteManque(manque(E, solde(), cout))}.</p>` : !libres ? '<p class="alerte-texte">Tous les bâtisseurs sont occupés.</p>' : ''}</div></div>`,
+    boutons: [{ id: 'non', texte: 'Plus tard' }, !payable || libres ? { id: 'oui', texte: 'Améliorer', classe: 'vert', desactive: !payable } : { id: 'batisseurs', texte: 'Bâtisseurs', classe: 'orange' }],
+  });
+  if (r === 'batisseurs') return fenetreBatisseurs(true);
+  if (r !== 'oui') return;
+  const res = ameliorer(E, n, x, y, solde(), payerEtoiles, maintenant());
+  if (!res.ok) return res.raison === 'batisseurs' ? fenetreBatisseurs(true) : dire(res.manque ? `Il manque ${texteManque(res.manque)}.` : 'Pas possible pour l’instant.');
   sauver();
-  toutDessiner();
-  dire('');
-  animer($('.ile-plan', racine), [{ transform: `translateX(${sens * 40}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 360 });
+  vibrer(18);
+  const centre = centreCase(ile, n, x, y);
+  rendu.pop(n, k, 'fini', temps);
+  rendu.gerbe(centre.x, centre.y, 'poussiere', temps);
+  dire(`Les travaux commencent : niveau ${vers} dans ${duree(c.chantier.fin - maintenant())}.`);
+  vie.peupler(E);
+  majHud();
+  majActions();
+}
+
+async function fenetreBatisseurs(occupes = false) {
+  const t = maintenant(), liste = chantiers(E), prix = prixBatisseur(E);
+  const lignes = liste.map((ch) => {
+    const c = E.iles[ch.n].cases[ch.cle], [x, y] = coord(ch.cle);
+    const p = prixFinir(E.iles[ch.n], x, y, t);
+    return `<li>${imageHtml(imageType(c.type, Math.max(1, c.chantier.vers)), 44)}<span><b>${BATIMENTS[c.type].nom}</b><small>${c.niveau === 0 ? 'Construction' : `Niveau ${c.chantier.vers}`} · encore ${duree(ch.fin - t)}</small></span>
+      <button class="petit-bouton bleu" data-voir="${ch.n}|${ch.cle}">Voir</button><button class="petit-bouton violet" data-finir="${ch.n}|${ch.cle}">${ICONE.eclair}${p} ★</button></li>`;
+  });
+  const fond = $('#ile-fenetre', scene);
+  const surClic = async (e) => {
+    const v = e.target.closest('[data-voir]'), f = e.target.closest('[data-finir]');
+    if (!v && !f) return;
+    const [n, k] = (v || f).dataset[v ? 'voir' : 'finir'].split('|');
+    ui.fermerFenetre?.('');
+    if (v) { choisir(Number(n), k); montrerCase(Number(n), k, Math.max(cam.z, 56)); return; }
+    const [x, y] = coord(k);
+    const r = finir(E, Number(n), x, y, payerEtoiles, maintenant());
+    if (!r.ok) return dire(`Il manque ${texteManque(r.manque || {})}.`);
+    sauver();
+    await tic();
+  };
+  fond.addEventListener('click', surClic);
+  const r = await fenetre({
+    titre: 'Les bâtisseurs',
+    corps: `${occupes ? '<p class="alerte-texte">Tous les bâtisseurs sont occupés. Attendez un peu, finissez un chantier, ou engagez-en un de plus.</p>' : ''}
+      <p>${pluriel(batisseurs(E), 'bâtisseur')} sur l’île : chacun mène un chantier à la fois. Défricher, planter ou creuser ne les occupe pas.</p>
+      ${lignes.length ? `<ul class="liste-chantiers">${lignes.join('')}</ul>` : '<p class="petit">Aucun chantier en cours : ils attendent vos ordres !</p>'}`,
+    boutons: prix !== null ? [{ id: 'non', texte: 'Fermer' }, { id: 'engager', texte: `Engager un bâtisseur · ${prix} ★`, classe: 'vert', desactive: solde() < prix }] : [{ id: 'non', texte: 'Fermer', classe: 'bleu' }],
+  });
+  fond.removeEventListener('click', surClic);
+  if (r === 'engager') {
+    const res = engagerBatisseur(E, payerEtoiles);
+    if (!res.ok) return dire(`Il manque ${texteManque(res.manque || {})}.`);
+    sauver();
+    majHud();
+    vibrer(20);
+    rendu.gerbe(cam.x, cam.y, 'confettis', temps);
+    dire('Un nouveau bâtisseur arrive sur l’île !');
+  }
+}
+
+/** La boutique : de grandes cartes qu'on fait défiler, par catégorie. */
+async function ouvrirBoutique(cible = null) {
+  ui.boutique = { onglet: cible?.onglet || ui.boutique?.onglet || 'batiments', cible };
+  const dessiner = () => {
+    const { onglet } = ui.boutique;
+    let cartes = '';
+    if (onglet === 'batiments' || onglet === 'decors') {
+      const liste = onglet === 'batiments' ? ORDRE_BATIMENTS : ORDRE_DECORS;
+      for (const type of liste) {
+        const bat = BATIMENTS[type], def = bat || DECORS[type], ouvert = estDebloque(E, type);
+        const cout = bat ? bat.cout[0] : def.cout;
+        const nb = E.iles.reduce((s, ile) => s + Object.values(ile.cases).filter((c) => c.type === type).length, 0);
+        const infos = bat
+          ? [`${ICONE.etoile}<span>Beauté ${bat.base}+</span>`, `${ICONE.horloge}<span>${duree(dureeChantier(type, 1))}</span>`]
+          : [`${ICONE.etoile}<span>Beauté ${def.beaute}+</span>`];
+        cartes += `<button class="carte ${ouvert ? '' : 'verrou'} ${ouvert && !peutPayer(E, solde(), cout) ? 'cher' : ''}" data-genre="${bat ? 'construire' : 'decorer'}" data-type="${type}" ${ouvert ? '' : 'aria-disabled="true"'}>
+          <span class="carte-image">${imageHtml(imageType(type), 84)}</span>
+          <span class="carte-nom">${def.nom}</span>
+          <span class="carte-infos">${infos.map((i) => `<span>${i}</span>`).join('')}</span>
+          <span class="carte-desc">${def.desc}</span>
+          ${nb ? `<span class="carte-nb">${nb} sur l’île</span>` : ''}
+          <span class="carte-prix">${ouvert ? coutHtml(cout, 20) : `${ICONE.cadenas}<span>Beauté ${def.debloque}</span>`}</span>
+        </button>`;
+      }
+    } else {
+      const ile = E.iles[E.active], prix = prixBatisseur(E);
+      cartes += `<button class="carte" data-special="agrandir"><span class="carte-image grand-ic">${ICONE.agrandir}</span><span class="carte-nom">Agrandir l’île</span>
+        <span class="carte-desc">Une rangée de terre sort de l’eau, du côté que vous choisissez.</span><span class="carte-prix">${coutHtml(coutAgrandir(ile, 'est'), 20)}<small>environ</small></span></button>`;
+      cartes += `<button class="carte" data-special="batisseurs"><span class="carte-image">${sprite(S.habitant(3, 3), 84)}</span><span class="carte-nom">Bâtisseurs</span>
+        <span class="carte-desc">${batisseurs(E)} au travail. Chacun mène un chantier à la fois.</span><span class="carte-prix">${prix !== null ? coutHtml({ etoiles: prix }, 20) : '<b>Au complet</b>'}</span></button>`;
+      cartes += `<button class="carte" data-special="progression"><span class="carte-image grand-ic or">${ICONE.etoile}</span><span class="carte-nom">Ce qui vous attend</span>
+        <span class="carte-desc">Tout ce que la beauté de l’île va débloquer.</span><span class="carte-prix"><b>Voir</b></span></button>`;
+    }
+    const corps = $('#ile-fenetre .panneau-corps', scene);
+    corps.innerHTML = `<div class="onglets" role="tablist">
+        ${[['batiments', 'Bâtiments'], ['decors', 'Décorations'], ['ile', 'L’île']].map(([id, nom]) => `<button role="tab" data-onglet="${id}" aria-selected="${id === onglet}">${nom}</button>`).join('')}
+      </div>
+      <div class="rayon"><button class="defiler gauche" data-defiler="-1" aria-label="Voir les précédents">${ICONE.gauche}</button>
+        <div class="cartes">${cartes}</div>
+        <button class="defiler droite" data-defiler="1" aria-label="Voir les suivants">${ICONE.droite}</button></div>`;
+    const rayon = $('.cartes', corps);
+    const majDefiler = () => {
+      $('.defiler.gauche', corps).disabled = rayon.scrollLeft < 8;
+      $('.defiler.droite', corps).disabled = rayon.scrollLeft + rayon.clientWidth > rayon.scrollWidth - 8;
+    };
+    rayon.addEventListener('scroll', majDefiler, { passive: true });
+    majDefiler();
+    if (!reduit()) [...rayon.children].forEach((c, i) => c.animate([{ transform: 'translateY(30px)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 240, delay: i * 35, easing: 'ease-out', fill: 'backwards' }));
+  };
+  const promesse = fenetre({ titre: 'Construire', corps: '', classe: 'boutique', large: true });
+  dessiner();
+  const fond = $('#ile-fenetre', scene);
+  const surClic = (e) => {
+    const o = e.target.closest('[data-onglet]');
+    if (o) { ui.boutique.onglet = o.dataset.onglet; return dessiner(); }
+    const d = e.target.closest('[data-defiler]');
+    if (d) { const r = $('.cartes', fond); r.scrollBy({ left: Number(d.dataset.defiler) * r.clientWidth * 0.8, behavior: reduit() ? 'auto' : 'smooth' }); return; }
+    const s = e.target.closest('[data-special]');
+    if (s) { ui.fermerFenetre(''); ui.apresBoutique = s.dataset.special; return; }
+    const carte = e.target.closest('.carte[data-type]');
+    if (!carte) return;
+    const { genre, type } = carte.dataset;
+    if (!estDebloque(E, type)) {
+      carte.animate?.([{ transform: 'translateX(0)' }, { transform: 'translateX(-8px)' }, { transform: 'translateX(8px)' }, { transform: 'translateX(0)' }], { duration: 260 });
+      return dire(`« ${nomDe(type)} » se débloque à ${(BATIMENTS[type] || DECORS[type]).debloque} de beauté.`);
+    }
+    const cout = coutDe(genre, type);
+    if (!peutPayer(E, solde(), cout)) {
+      carte.animate?.([{ transform: 'translateX(0)' }, { transform: 'translateX(-8px)' }, { transform: 'translateX(8px)' }, { transform: 'translateX(0)' }], { duration: 260 });
+      const m = manque(E, solde(), cout);
+      return dire(`Il manque ${texteManque(m)}. ${m.etoiles ? 'Touchez « Jouer » pour gagner des étoiles.' : 'Récoltez, abattez une forêt ou cassez des rochers.'}`);
+    }
+    ui.fermerFenetre('');
+    ui.apresBoutique = { genre, type };
+  };
+  fond.addEventListener('click', surClic);
+  ui.apresBoutique = null;
+  await promesse;
+  fond.removeEventListener('click', surClic);
+  const suite = ui.apresBoutique;
+  ui.apresBoutique = null;
+  if (suite === 'agrandir') return commencerAgrandir();
+  if (suite === 'batisseurs') return fenetreBatisseurs();
+  if (suite === 'progression') return fenetreProgression();
+  if (suite) return commencerPose(suite.genre, suite.type, ui.boutique.cible);
+}
+
+function fenetreProgression() {
+  const p = progressionIle(E);
+  const liste = paliers().map((x) => {
+    const ok = p.beaute >= x.seuil;
+    const img = x.genre === 'ile' ? `<span class="mini-ile">${tuile(T.herbe, 40)}</span>` : imageHtml(imageType(x.type), 40);
+    return `<li class="${ok ? 'ok' : ''}">${img}<span><b>${x.nom}</b><small>${x.genre === 'ile' ? 'Une nouvelle île' : x.genre === 'decor' ? 'Décoration' : 'Bâtiment'}</small></span><em>${ok ? ICONE.coche : `${x.seuil}`}</em></li>`;
+  }).join('');
+  fenetre({
+    titre: `Île de niveau ${p.niveau}`,
+    corps: `<p>Chaque construction et chaque décoration rend l’île plus belle, surtout à côté des voisins qu’elle aime. La beauté débloque de nouvelles choses :</p>
+      <div class="jauge-grande"><i style="width:${p.vers === null ? 100 : Math.round(((p.beaute - p.de) / (p.vers - p.de)) * 100)}%"></i><span>Beauté ${p.beaute}${p.vers !== null ? ` / ${p.vers}` : ''}</span></div>
+      <ul class="paliers">${liste}</ul>`,
+    boutons: [{ id: 'ok', texte: 'Fermer', classe: 'bleu' }],
+  });
+}
+
+function fenetreJouer() {
+  const cartes = [
+    `<button class="jeu" data-aller="niveaux"><span class="jeu-ic aventure">${ICONE.etoile}</span><span><b>Aventure</b><small>Les niveaux du jour</small></span></button>`,
+    ...JEUX.filter((j) => !j.bientot).map((j) => `<button class="jeu" data-aller="${j.id}"><span class="jeu-ic">${j.icone}</span><span><b>${j.nom}</b><small>${j.resume?.() || j.description || ''}</small></span></button>`),
+  ].join('');
+  const fond = $('#ile-fenetre', scene);
+  const surClic = (e) => {
+    const b = e.target.closest('[data-aller]');
+    if (!b) return;
+    ui.fermerFenetre('');
+    quitterPleinEcran();
+    location.hash = `#/${b.dataset.aller}`;
+  };
+  fond.addEventListener('click', surClic);
+  fenetre({ titre: 'Jouer pour gagner des étoiles', corps: `<p class="intro-jouer">Chaque partie rapporte des étoiles : revenez ensuite les dépenser sur l’île.</p><div class="jeux">${cartes}</div>`, large: true })
+    .then(() => fond.removeEventListener('click', surClic));
+}
+
+// ---------- Le guide ----------
+
+function montrerGuide(texte, cible = null, ms = 9000) {
+  if (!scene || ui.mode !== 'libre' || ui.fenetre) return; // pas pendant qu'on pose ou qu'une fenêtre est ouverte
+  const g = $('#ile-guide', scene);
+  $('#ile-guide p', scene).innerHTML = texte;
+  g.hidden = false;
+  if (!reduit()) g.animate([{ transform: 'translateY(20px) scale(.9)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 280, easing: 'cubic-bezier(.34, 1.56, .64, 1)' });
+  ui.guide = { cible };
+  $$('.hud .appel', scene).forEach((b) => b.classList.remove('appel'));
+  if (cible?.genre === 'bouton') $(`#ile-${cible.id}`, scene)?.classList.add('appel');
+  if (cible?.genre === 'case') montrerCase(cible.n, cible.cle);
+  clearTimeout(montrerGuide.minuterie);
+  if (ms) montrerGuide.minuterie = setTimeout(fermerGuide, ms);
+}
+function fermerGuide() {
+  if (!ui?.guide || !scene) return;
+  ui.guide = null;
+  $('#ile-guide', scene).hidden = true;
+  $$('.hud .appel', scene).forEach((b) => b.classList.remove('appel'));
+}
+function donnerConseil() {
+  const c = conseil(E, solde(), maintenant(), E.active);
+  montrerGuide(c.texte, c.cible);
 }
 
 // ---------- Module ----------
 
+function construireScene() {
+  racine.innerHTML = `
+    <div class="ile-scene">
+      <canvas class="ile-toile" aria-label="Votre île. Faites glisser pour vous déplacer, touchez pour choisir."></canvas>
+      <div class="hud">
+        <div class="hud-hg">
+          <button class="rond bleu" id="ile-accueil" aria-label="Retour à l’accueil">${ICONE.maison}</button>
+          <button class="niveau" id="ile-niveau" aria-label="Niveau de l’île et ce qu’il débloque">
+            <span class="niveau-badge"><b id="ile-niveau-n">1</b></span>
+            <span class="niveau-info"><b id="ile-beaute">Beauté 0</b><span class="jauge"><i id="ile-jauge"></i></span><small id="ile-prochain"></small></span>
+          </button>
+          <button class="pastille-batisseurs" id="ile-batisseurs">${sprite(S.habitant(3, 3), 30)}<b>2/2</b></button>
+        </div>
+        <div class="hud-hc">
+          <div class="ruban">
+            <button class="ruban-fleche" id="ile-prec" aria-label="Île précédente">${ICONE.gauche}</button>
+            <span id="ile-nom"></span>
+            <button class="ruban-fleche" id="ile-suiv" aria-label="Île suivante">${ICONE.droite}</button>
+          </div>
+        </div>
+        <div class="hud-hd" id="ile-res">${capsules()}</div>
+        <div class="hud-bg">
+          <button class="gros-bouton jouer" id="ile-jouer"><span class="gb-ic">${ICONE.etoile}</span><span>Jouer</span></button>
+          <button class="rond jaune" id="ile-conseil" aria-label="Un conseil">${ICONE.ampoule}</button>
+        </div>
+        <div class="hud-bd">
+          <button class="rond vert" id="ile-ramasser" aria-label="Tout ramasser" hidden>${ICONE.panier}<span class="compte">0</span></button>
+          <button class="gros-bouton construire" id="ile-construire"><span class="gb-ic">${ICONE.marteau}</span><span>Construire</span></button>
+        </div>
+        <div class="hud-actions" id="ile-actions" hidden></div>
+        <div class="hud-etiquette" id="ile-etiquette" hidden></div>
+        <div class="hud-valider" id="ile-valider" hidden>
+          <button class="rond rouge" id="ile-annuler" aria-label="Annuler">${ICONE.croix}</button>
+          <button class="rond vert grand" id="ile-ok" aria-label="Poser ici">${ICONE.coche}</button>
+        </div>
+        <div class="hud-bandeau" id="ile-bandeau" hidden></div>
+        <button class="gros-bouton terminer" id="ile-terminer" hidden><span class="gb-ic">${ICONE.coche}</span><span>Terminé</span></button>
+        <p class="hud-toast" id="ile-toast" aria-live="polite" hidden></p>
+        <div class="hud-guide" id="ile-guide" hidden>
+          <span class="guide-tete">${sprite(S.habitant(4, 0), 64)}</span>
+          <p></p>
+          <button class="guide-fermer" aria-label="Fermer le conseil">${ICONE.croix}</button>
+        </div>
+      </div>
+      <div class="ile-fenetre" id="ile-fenetre" hidden></div>
+    </div>`;
+  scene = $('.ile-scene', racine);
+  toile = $('.ile-toile', scene);
+}
+
+function brancher() {
+  suivreGestes(toile, versScene, {
+    toucher: (p) => toucher(p),
+    debutGlisse(p) {
+      ui.vol = null;
+      ui.inertie = null;
+      if ((ui.mode === 'poser' || ui.mode === 'deplacer') && ui.pose) {
+        const w = versMonde(cam, p.x, p.y), sous = caseSous(E, ouvertes(), w.x, w.y);
+        if (sous && sous.n === ui.pose.n && sous.cle === ui.pose.cle) return 'objet';
+      }
+      return 'camera';
+    },
+    glisse(p, dx, dy, genre) {
+      if (genre === 'objet') {
+        const w = versMonde(cam, p.x, p.y - cam.z * 0.3), sous = caseSous(E, ouvertes(), w.x, w.y);
+        if (sous && sous.n === ui.pose.n && sous.cle !== ui.pose.cle) { ui.pose.cle = sous.cle; majValider(); }
+        return;
+      }
+      cam = { ...cam, x: cam.x - dx / cam.z, y: cam.y - dy / cam.z };
+      fermerGuide();
+    },
+    finGlisse(vx, vy, genre) {
+      if (genre === 'camera' && !reduit()) ui.inertie = { vx, vy };
+    },
+    pince(c, facteur, dx, dy) {
+      const { min, max } = limitesZoom();
+      cam = zoomAutour({ ...cam, x: cam.x - dx / cam.z, y: cam.y - dy / cam.z }, c.x, c.y, facteur, min, max);
+    },
+    molette(p, facteur) {
+      const { min, max } = limitesZoom();
+      ui.vol = null;
+      cam = zoomAutour(cam, p.x, p.y, facteur, min, max);
+    },
+  });
+  const sur = (id, f) => $(`#${id}`, scene).addEventListener('click', f);
+  sur('ile-accueil', () => { quitterPleinEcran(); revenir(''); });
+  sur('ile-niveau', fenetreProgression);
+  sur('ile-batisseurs', () => fenetreBatisseurs());
+  sur('ile-jouer', () => { fermerGuide(); fenetreJouer(); });
+  sur('ile-conseil', () => (ui.guide ? fermerGuide() : donnerConseil()));
+  sur('ile-ramasser', toutRecolter);
+  sur('ile-construire', () => { fermerGuide(); deselectionner(); ouvrirBoutique(); });
+  sur('ile-ok', confirmerPose);
+  sur('ile-annuler', () => { sortirModePose(); dire(''); });
+  sur('ile-terminer', finirAgrandir);
+  sur('ile-prec', () => changerIle(-1));
+  sur('ile-suiv', () => changerIle(1));
+  sur('ile-etoiles', () => montrerGuide('Les étoiles se gagnent en jouant : Sudoku, Solitaire, Dames, Backgammon, Bulles et l’Aventure. Touchez « Jouer » !', { genre: 'bouton', id: 'jouer' }));
+  $('#ile-guide', scene).addEventListener('click', fermerGuide);
+  $('#ile-actions', scene).addEventListener('click', (e) => {
+    const b = e.target.closest('[data-action]');
+    if (b) { vibrer(8); action(b.dataset.action); }
+  });
+  surTouche = (e) => {
+    if (e.key !== 'Escape' || !racine) return;
+    if (ui.fenetre) ui.fermerFenetre?.('');
+    else if (ui.mode === 'poser' || ui.mode === 'deplacer') sortirModePose();
+    else if (ui.mode === 'agrandir') finirAgrandir();
+    else deselectionner();
+  };
+  document.addEventListener('keydown', surTouche);
+  surRedimension = () => orienter();
+  window.addEventListener('resize', surRedimension);
+  screen.orientation?.addEventListener?.('change', surRedimension);
+  surVisibilite = () => { if (!document.hidden) { dernier = performance.now(); tic(); } };
+  document.addEventListener('visibilitychange', surVisibilite);
+}
+
+function changerIle(sens) {
+  const n = Math.max(0, Math.min(ouvertes() - 1, E.active + sens));
+  if (n === E.active) return;
+  E.active = n;
+  deselectionner();
+  majRuban();
+  volerVers(cameraPourIle(n), 900);
+}
+
+/** Au retour d'une partie : les étoiles gagnées arrivent sur l'île. */
+function accueillir() {
+  const gagnees = modeDev() || E.soldeVu === undefined ? 0 : solde() - E.soldeVu;
+  if (!E.tuto) {
+    E.tuto = true;
+    sauver();
+    setTimeout(() => montrerGuide(`Bonjour ! Je suis ${GUIDE}, votre voisine. Faites glisser le doigt pour vous promener, et touchez « Construire » pour bâtir. Le bouton ${ICONE.ampoule.replace('<svg', '<svg class="en-ligne"')} donne un conseil.`, { genre: 'bouton', id: 'construire' }, 14000), 700);
+    return;
+  }
+  if (gagnees > 0) {
+    sauver();
+    setTimeout(() => {
+      montrerGuide(`Bravo ! Vous avez gagné <b>${pluriel(gagnees, 'étoile')}</b> en jouant. De quoi construire !`, { genre: 'bouton', id: 'construire' }, 7000);
+      const depart = posScene($('#ile-jouer', scene)), b = posScene($('#ile-etoiles .capsule-ic', scene));
+      if (reduit()) return;
+      for (let i = 0; i < Math.min(gagnees, 8); i++) {
+        const el = document.createElement('span');
+        el.className = 'vol';
+        el.innerHTML = icone('etoiles', 30);
+        el.style.left = `${depart.x - 15}px`;
+        el.style.top = `${depart.y - 15}px`;
+        $('.hud', scene).append(el);
+        el.animate([{ transform: 'scale(.4)', opacity: 0 }, { transform: `translate(${(b.x - depart.x) * 0.4}px, ${(b.y - depart.y) * 0.4 - 80}px) scale(1.4)`, opacity: 1, offset: 0.45 }, { transform: `translate(${b.x - depart.x}px, ${b.y - depart.y}px) scale(.8)`, opacity: 1 }],
+          { duration: 1000, delay: 300 + i * 110, easing: 'ease-in-out', fill: 'backwards' }).finished.then(() => el.remove(), () => el.remove());
+      }
+    }, 500);
+    return;
+  }
+  // de temps en temps, un conseil pour savoir quoi faire
+  const c = conseil(E, solde(), maintenant(), E.active);
+  if (c.cible?.genre === 'case' || !Object.keys(E.iles[0].cases).length) setTimeout(() => montrerGuide(c.texte, c.cible), 900);
+}
+
+/**
+ * Pour l'accueil : une miniature de l'île du joueur et ce qui l'attend là-bas (sans ouvrir l'écran).
+ * @returns {{ miniature: string, peindre: (canvas) => void, niveau: number, beaute: number, aRamasser: number, chantiers: number, bouteille: boolean }}
+ */
+export function apercuIle() {
+  const etat = migrer(JSON.parse(JSON.stringify(lire(CLE, null))), maintenant());
+  const t = maintenant();
+  actualiser(etat, t); // une copie : rien n'est enregistré
+  const ile = etat.iles[0], { x0, y0, x1, y1 } = ile.ext;
+  const L = x1 - x0 + 3, H = y1 - y0 + 3;
+  const taille = Math.max(10, Math.min(18, Math.floor(150 / L)));
+  const miniature = `<canvas class="miniature" width="${L * 16}" height="${H * 16}" style="width:${L * taille}px;height:${H * taille}px" aria-hidden="true"></canvas>`;
+  /** Dessine la miniature dans son canvas (les tuiles une à une, sans bavure entre elles). */
+  function peindre(toileMini) {
+    if (!toileMini) return;
+    const g = toileMini.getContext('2d'), feuilles = { t: new Image(), s: new Image() };
+    feuilles.t.src = new URL('../../assets/ile/tuiles.png', import.meta.url).href;
+    feuilles.s.src = new URL('../../assets/ile/sprites.png', import.meta.url).href;
+    Promise.all(Object.values(feuilles).map((im) => im.decode().catch(() => {}))).then(() => {
+      for (let y = y0 - 1; y <= y1 + 1; y++) for (let x = x0 - 1; x <= x1 + 1; x++) {
+        const img = imageCase(ile, x, y, t);
+        g.drawImage(feuilles[img.f], img.c[0] * 16, img.c[1] * 16, 16, 16, (x - x0 + 1) * 16, (y - y0 + 1) * 16, 16, 16);
+      }
+    });
+  }
+  let aRamasser = 0;
+  const ouv = ilesOuvertes(etat);
+  for (let n = 0; n < ouv; n++) for (const k of Object.keys(etat.iles[n].cases)) aRamasser += stock(etat.iles[n], ...coord(k), t);
+  const p = progressionIle(etat);
+  return { miniature, peindre, niveau: p.niveau, beaute: p.beaute, aRamasser, chantiers: chantiers(etat).length, bouteille: Boolean(etat.tresor) };
+}
+
 export default {
   id: 'ile',
   nom: 'Mon île',
+  pleinEcran: true,
 
   monter(conteneur) {
     racine = conteneur;
     charger();
     actualiser(E, maintenant());
-    sauver();
-    choix = null;
-    onglet = 'construire';
-    signature = '';
-    racine.innerHTML = `
-      <div class="ile-body">
-        <div class="ile-res" id="ile-res"></div>
-        <div class="ile-beaute beaute" id="ile-beaute"></div>
-        <div class="ile-nav"></div>
-        <div class="ile-mer">
-          <span class="navire n1">${tuile(T.bateaux[2], 32)}</span>
-          <span class="navire n2">${tuile(T.bateaux[5], 32)}</span>
-          <div class="ile-plan"><div class="ile-grille"></div><div class="ile-vie" aria-hidden="true"></div></div>
-        </div>
-        <button class="btn primary ramasser" id="ile-ramasser" hidden></button>
-        <p class="status" id="ile-status" aria-live="polite"></p>
-        <button class="btn" id="ile-fin" hidden>Terminer</button>
-        <div class="onglets" role="tablist">
-          ${Object.entries(ONGLETS).map(([k, v]) => `<button role="tab" data-onglet="${k}">${v}</button>`).join('')}
-        </div>
-        <div class="boutique" id="ile-boutique"></div>
-        <p class="tip">Les habitants récoltent bois, pierre et blé tout seuls, même quand l’appli est fermée : revenez ramasser ! Les étoiles se gagnent en jouant.</p>
-      </div>`;
-    vie = creerVie($('.ile-vie', racine), () => ({ ile: ile(), ts, origine: { x0: ile().ext.x0, y0: ile().ext.y0 } }));
-    toutDessiner();
-    dire(Object.keys(ile().cases).length ? '' : 'Bienvenue sur votre île ! Commencez par une cabane de bûcheron près de la forêt, ou un champ de blé.');
-    $('.ile-grille', racine).addEventListener('click', (e) => {
-      const c = e.target.closest('.case');
-      if (c) toucherCase(c.dataset.k, c);
-    });
-    $('#ile-boutique', racine).addEventListener('click', (e) => {
-      const b = e.target.closest('.carte-bat');
-      if (b && !b.disabled) choisir(b.dataset.genre, b.dataset.type);
-    });
-    $('.onglets', racine).addEventListener('click', (e) => {
-      const b = e.target.closest('[data-onglet]');
-      if (!b) return;
-      onglet = b.dataset.onglet;
-      choix = null;
-      dessinerGrille();
-      dessinerBoutique();
-      dire('');
-    });
-    $('.ile-nav', racine).addEventListener('click', (e) => {
-      const b = e.target.closest('[data-ile]');
-      if (b) changerIle(Number(b.dataset.ile));
-    });
-    $('#ile-fin', racine).addEventListener('click', () => { choix = null; dessinerGrille(); dessinerBoutique(); dire(''); });
-    $('#ile-ramasser', racine).addEventListener('click', toutRamasserAction);
-    ticker = setInterval(tic, 1000);
-    surRedimension = () => { if (racine) { signature = ''; dessinerGrille(); } };
-    window.addEventListener('resize', surRedimension);
+    E.active = Math.min(E.active || 0, ouvertes() - 1);
+    ui = { mode: 'libre', selection: null, pose: null, agrandir: null, guide: null, vol: null, inertie: null, fenetre: false };
+    dernieresRessources = null;
+    signatureActions = '';
+    construireScene();
+    rendu = creerRendu(toile);
+    vie = creerVie();
+    vie.peupler(E);
+    document.documentElement.classList.add('ile-ouverte');
+    orienter();
+    cam = cameraPourIle(E.active);
+    cam = borner(cam, bornes());
+    brancher();
+    majHud();
+    pleinEcran();
+    dernier = performance.now();
+    animation = requestAnimationFrame(boucle);
+    horloge = setInterval(tic, 1000);
+    accueillir();
+    // pour tester (mode développeur) : l'état et les actions de l'écran
+    if (modeDev()) window.ileDebug = { cam: () => cam, E: () => E, ui: () => ui, finirVol: () => { if (ui.vol) { cam = ui.vol.vers; ui.vol = null; } }, cameraPourIle, CADRE_AGRANDIR, ouvrirBoutique, commencerPose, confirmerPose, commencerAgrandir, agrandirVers, choisir, action, toucher, donnerConseil, fenetreProgression, fenetreBatisseurs, fenetreJouer, versEcran: (x, y) => versEcran(cam, x, y), centreCase: (n, x, y) => centreCase(E.iles[n], n, x, y) };
   },
 
   demonter() {
-    clearInterval(ticker);
+    cancelAnimationFrame(animation);
+    clearInterval(horloge);
+    clearTimeout(dire.minuterie);
+    clearTimeout(montrerGuide.minuterie);
     window.removeEventListener('resize', surRedimension);
-    vie?.arreter();
-    vie = null;
+    screen.orientation?.removeEventListener?.('change', surRedimension);
+    document.removeEventListener('keydown', surTouche);
+    document.removeEventListener('visibilitychange', surVisibilite);
+    document.documentElement.classList.remove('ile-ouverte');
+    quitterPleinEcran();
+    if (E) sauver();
     racine = null;
+    scene = null;
   },
 };

@@ -40,11 +40,19 @@ Pour une nouvelle version : refaire les mêmes étapes, le bouton s'appellera **
 - Chaque partie gagnée rapporte des **étoiles** ★ (1 en facile, 2 en moyen, 3 en difficile ; 1 d'encouragement si l'on perd).
 - **Aventure** : une carte en mer, d'escale en escale. **3 nouveaux niveaux s'ouvrent chaque jour** ; les niveaux
   déjà réussis se rejouent quand on veut pour gagner plus d'étoiles. Les **missions du jour** donnent des étoiles en plus.
-- **Mon île** : choisissez un bâtiment en bas, puis touchez une case : le chiffre montre les points de beauté gagnés,
-  la meilleure case brille. Les habitants construisent (on voit le chantier avancer), puis récoltent tout seuls du
-  **bois**, de la **pierre** et du **blé**, même quand l'appli est fermée : touchez les petites bulles, ou
-  « Tout ramasser ». On peut aussi abattre la forêt, casser les rochers, planter des arbres, creuser un étang,
-  décorer et **agrandir l'île**. Une île très belle en fait apparaître une nouvelle !
+- **Mon île** : c'est le cœur de l'appli. Elle s'ouvre **en plein écran, à l'horizontale** (tournez le téléphone).
+  - On se promène en faisant **glisser le doigt** ; on peut zoomer en écartant deux doigts.
+  - **Construire** (en bas à droite) : choisissez un bâtiment, il apparaît sur l'île en transparence. Touchez une
+    case entourée (le chiffre, c'est la beauté gagnée ; la meilleure case est en or), puis la coche verte ✓.
+  - **Touchez un bâtiment** : son nom s'affiche et des boutons ronds apparaissent en bas (Infos, Améliorer,
+    Ramasser, Finir, Déplacer, Retirer). Touchez une forêt pour l'abattre, des rochers pour les casser, l'herbe
+    pour planter ou creuser un étang.
+  - Les **bâtisseurs** (en haut à gauche) mènent un chantier chacun. Les habitants récoltent tout seuls du
+    **bois**, de la **pierre** et du **blé**, même appli fermée : une bulle apparaît, il suffit de la toucher.
+  - De temps en temps, une **bouteille** s'échoue sur la plage : touchez-la, c'est un petit cadeau.
+  - **Jouer** (en bas à gauche) ouvre les jeux ; après la partie, on revient directement sur l'île.
+  - L'ampoule 💡 : Rose, la voisine, donne un **conseil** et montre où toucher.
+  - Une île très belle en fait apparaître une nouvelle, cachée jusque-là dans les nuages !
 - **Bulles** : posez le doigt là où vous voulez envoyer la bulle (une ligne montre le chemin), levez-le pour tirer.
   Trois bulles de la même couleur éclatent, et tout ce qui ne tient plus tombe. Chaque couleur a son symbole
   (cœur, losange, triangle, étoile, rond, carré). S'il manque des bulles, 5 de plus sont offertes une fois par niveau.
@@ -75,8 +83,9 @@ src/registre.js                           LA liste des jeux : l'accueil est gén
 src/core/                                 outils, stockage, dialogues, animations (mouvement.js), étoiles,
                                           fin de partie commune (partie.js), calculs en arrière-plan (travail.js)
 src/progression/                          Aventure : niveaux.js (carte, rythme quotidien), missions.js, carte.js (écran)
-src/ile/                                  Mon île : regles.js (règles, ressources en temps réel ; testé), index.js (écran),
-                                          vie.js (habitants, animaux, fumée, mouettes)
+src/ile/                                  Mon île (plein écran) : regles.js (règles, temps réel ; testé), conseil.js (le guide),
+                                          plan.js (l'archipel), camera.js, gestes.js, monde.js (rendu canvas),
+                                          vie.js (habitants, animaux, bateaux), index.js (écran et interface)
 src/games/<jeu>/index.js                  affichage et commandes du jeu
 src/games/<jeu>/moteur.js                 règles, IA, génération : sans navigateur, testé avec Node
 src/games/<jeu>/<jeu>.css                 styles propres au jeu
@@ -158,6 +167,12 @@ une appli légère, rapide sur un vieux téléphone et sous licence MIT, leurs t
   cache dans des `OffscreenCanvas`) : les visuels de référence étaient payants, aucune image n'en est reprise.
 - **Aventure** : le modèle de la « carte saga » popularisé par Candy Crush, avec un rythme quotidien.
 - **Mon île** : inspiré d'*Islanders* (points selon les voisins), sans malus, sans minuteur, sans échec.
+  L'**interface** reprend celle de *Clash of Clans* : monde plein écran qu'on parcourt du doigt (caméra avec élan,
+  zoom à deux doigts), ressources en haut à droite, niveau en haut à gauche, « Jouer » et « Construire » en bas,
+  bâtiment touché → étiquette et boutons d'action, construction posée sur la carte (fantôme vert/rouge, ✓ / ✗),
+  bâtisseurs limités, boutique en grandes cartes. Tout est dessiné sur un `<canvas>` (monde.js) ; l'interface est
+  en HTML par-dessus. À la verticale, la scène est tournée d'un quart de tour : le jeu reste à l'horizontale
+  (et l'appli demande le plein écran et l'orientation paysage quand le téléphone le permet).
 - **Graphismes de l'île et de la carte** : pack « Tiny Islands » de Majadroid (CC0), dans `assets/ile`. Les habitants,
   animaux, chantiers et terrains aménagés sont dessinés par `scripts/generer-sprites.mjs` dans la même palette ;
   le décor (arbres, ruche, puits, outils…) vient de « Tiny Town » de **Kenney** (CC0). Aucun autre pack libre

@@ -106,6 +106,9 @@ export const ORDRE_AMENAGEMENTS = ['abattre', 'casser', 'planter', 'creuser', 'c
 const BEAUTE_TERRAIN = { etang: 3 };
 
 export const PLAFOND_PAR_NIVEAU = 10; // stock maximal d'un bâtiment producteur, par niveau
+export const BATISSEURS_DEPART = 2; // chantiers menés en même temps (les aménagements n'en demandent pas)
+export const PRIX_BATISSEURS = [15, 30]; // en étoiles : le 3e, puis le 4e bâtisseur
+export const INTERVALLE_TRESOR = 40 * MINUTE; // une bouteille s'échoue sur la plage de temps en temps
 export const COUT_AGRANDIR_CASE = { pierre: 2 }; // par nouvelle case de terre
 export const COUT_AGRANDIR_FIXE = { etoiles: 4 };
 
@@ -251,6 +254,28 @@ function payer(e, cout, payerEtoiles) {
   return true;
 }
 
+// ---------- Bâtisseurs ----------
+
+export const batisseurs = (e) => e.batisseurs || BATISSEURS_DEPART;
+/** Les chantiers en cours sur toutes les îles : { n, cle, fin }, le plus proche de la fin d'abord. */
+export function chantiers(e) {
+  const out = [];
+  e.iles.forEach((ile, n) => {
+    for (const [k, c] of Object.entries(ile.cases)) if (c.chantier) out.push({ n, cle: k, fin: c.chantier.fin });
+  });
+  return out.sort((a, b) => a.fin - b.fin);
+}
+export const batisseursLibres = (e) => Math.max(0, batisseurs(e) - chantiers(e).length);
+/** Prix (en étoiles) du prochain bâtisseur, ou null s'il y en a déjà le plus possible. */
+export const prixBatisseur = (e) => PRIX_BATISSEURS[batisseurs(e) - BATISSEURS_DEPART] ?? null;
+export function engagerBatisseur(e, payerEtoiles) {
+  const prix = prixBatisseur(e);
+  if (prix === null) return { ok: false, raison: 'max' };
+  if (!payerEtoiles(prix)) return { ok: false, raison: 'cout', manque: { etoiles: prix } };
+  e.batisseurs = batisseurs(e) + 1;
+  return { ok: true };
+}
+
 // ---------- Construire ----------
 
 export function peutPoser(ile, x, y, type) {
@@ -267,6 +292,7 @@ export function construire(e, n, x, y, type, etoiles, payerEtoiles, t) {
   const ile = e.iles[n], def = BATIMENTS[type];
   if (!estDebloque(e, type)) return { ok: false, raison: 'pas-debloque' };
   if (!peutPoser(ile, x, y, type)) return { ok: false, raison: 'case' };
+  if (!batisseursLibres(e)) return { ok: false, raison: 'batisseurs' };
   if (!peutPayer(e, etoiles, def.cout[0])) return { ok: false, raison: 'cout', manque: manque(e, etoiles, def.cout[0]) };
   if (!payer(e, def.cout[0], payerEtoiles)) return { ok: false, raison: 'cout' };
   ile.cases[cle(x, y)] = { type, niveau: 0, chantier: { debut: t, fin: t + dureeChantier(type, 1), vers: 1 }, depuis: t };
@@ -281,6 +307,7 @@ export function ameliorer(e, n, x, y, etoiles, payerEtoiles, t) {
   if (!c || !BATIMENTS[c.type]) return { ok: false, raison: 'vide' };
   if (c.chantier) return { ok: false, raison: 'en-cours' };
   if (c.niveau >= niveauMax(c.type)) return { ok: false, raison: 'max' };
+  if (!batisseursLibres(e)) return { ok: false, raison: 'batisseurs' };
   const cout = BATIMENTS[c.type].cout[c.niveau];
   if (!peutPayer(e, etoiles, cout)) return { ok: false, raison: 'cout', manque: manque(e, etoiles, cout) };
   if (!payer(e, cout, payerEtoiles)) return { ok: false, raison: 'cout' };
@@ -296,6 +323,132 @@ export function accelerer(e, n, x, y, payerEtoiles, t) {
   if (!payerEtoiles(prixAcceleration(c, t))) return { ok: false, raison: 'cout' };
   c.chantier.fin = t;
   return { ok: true };
+}
+
+/** Prix pour finir tout de suite ce qui se passe sur une case (chantier ou aménagement), ou null. */
+export function prixFinir(ile, x, y, t) {
+  const c = ile.cases[cle(x, y)], w = ile.travaux[cle(x, y)];
+  if (c?.chantier) return prixAcceleration(c, t);
+  if (w) return Math.max(1, Math.ceil((w.fin - t) / MINUTE));
+  return null;
+}
+/** Finit tout de suite un chantier ou un aménagement (le résultat arrive au prochain `actualiser`). */
+export function finir(e, n, x, y, payerEtoiles, t) {
+  const ile = e.iles[n], prix = prixFinir(ile, x, y, t);
+  if (prix === null) return { ok: false };
+  if (!payerEtoiles(prix)) return { ok: false, raison: 'cout', manque: { etoiles: prix } };
+  const travail = ile.cases[cle(x, y)]?.chantier || ile.travaux[cle(x, y)];
+  travail.fin = t;
+  return { ok: true };
+}
+
+// ---------- Déplacer ----------
+
+/** Peut-on déplacer ce qui est en `de` vers (x, y) ? (sa propre case compte comme libre) */
+export function peutDeplacer(ile, de, x, y) {
+  const c = ile.cases[de];
+  if (!c) return false;
+  if (cle(x, y) === de) return true;
+  delete ile.cases[de];
+  const ok = peutPoser(ile, x, y, c.type);
+  ile.cases[de] = c;
+  return ok;
+}
+/** Beauté gagnée (ou perdue) si l'on déplace ce qui est en `de` vers (x, y) ; null si impossible. */
+export function apercuDeplacement(ile, de, x, y) {
+  if (!peutDeplacer(ile, de, x, y)) return null;
+  if (cle(x, y) === de) return 0;
+  const avant = beauteIle(ile), c = ile.cases[de];
+  delete ile.cases[de];
+  ile.cases[cle(x, y)] = c;
+  const apres = beauteIle(ile);
+  delete ile.cases[cle(x, y)];
+  ile.cases[de] = c;
+  return apres - avant;
+}
+/** Déplace un bâtiment ou un décor, avec son niveau, son chantier et sa récolte en cours. Gratuit. */
+export function deplacer(e, n, de, x, y) {
+  const ile = e.iles[n];
+  if (!peutDeplacer(ile, de, x, y)) return { ok: false, raison: 'case' };
+  const gain = apercuDeplacement(ile, de, x, y);
+  if (cle(x, y) !== de) {
+    ile.cases[cle(x, y)] = ile.cases[de];
+    delete ile.cases[de];
+  }
+  return { ok: true, gain };
+}
+
+// ---------- Trésor : une bouteille à la mer ----------
+
+/** Cases d'eau du bord où une bouteille peut s'échouer. */
+function plages(ile) {
+  const { x0, y0, x1, y1 } = ile.ext, out = [];
+  for (let y = y0 - 1; y <= y1 + 1; y++) for (let x = x0 - 1; x <= x1 + 1; x++) {
+    if (estCote(ile, x, y) && !ile.cases[cle(x, y)]) out.push(cle(x, y));
+  }
+  return out;
+}
+/** Ce que contient la bouteille : un peu de chaque chose, parfois une étoile. */
+function contenuTresor(alea) {
+  const entre = (a, b) => a + Math.floor(alea() * (b - a + 1));
+  const tirage = alea();
+  if (tirage < 0.2) return { etoiles: 1, bois: entre(1, 3) };
+  if (tirage < 0.45) return { bois: entre(4, 7) };
+  if (tirage < 0.65) return { pierre: entre(3, 5) };
+  if (tirage < 0.85) return { ble: entre(4, 7) };
+  return { bois: 2, pierre: 2, ble: 2 };
+}
+function actualiserTresor(e, t) {
+  const alea = aleaGraine(Math.floor(t / 1000) % 2147483647);
+  if (e.tresor) {
+    // la plage a changé (île agrandie, port construit) : la bouteille dérive vers une autre case du bord
+    const ile = e.iles[e.tresor.n], [x, y] = coord(e.tresor.cle);
+    if (estCote(ile, x, y) && !ile.cases[e.tresor.cle]) return null;
+    const places = plages(ile);
+    if (!places.length) { e.tresor = null; return null; }
+    e.tresor.cle = places[Math.floor(alea() * places.length)];
+    return { genre: 'tresor', n: e.tresor.n, cle: e.tresor.cle };
+  }
+  if (e.prochainTresor === undefined) { e.prochainTresor = t + 2 * MINUTE; return null; } // la toute première arrive vite
+  if (t < e.prochainTresor) return null;
+  const n = Math.floor(alea() * ilesOuvertes(e));
+  const places = plages(e.iles[n]);
+  if (!places.length) { e.prochainTresor = t + INTERVALLE_TRESOR; return null; }
+  e.tresor = { n, cle: places[Math.floor(alea() * places.length)], gain: contenuTresor(alea), depuis: t };
+  return { genre: 'tresor', n, cle: e.tresor.cle };
+}
+/** Ramasse la bouteille : les ressources sont ajoutées ; les étoiles éventuelles (gain.etoiles) sont à donner par l'appelant. */
+export function ramasserTresor(e, t) {
+  if (!e.tresor) return null;
+  const { gain } = e.tresor;
+  for (const r of RESSOURCES) e.ressources[r] += gain[r] || 0;
+  e.tresor = null;
+  e.prochainTresor = t + INTERVALLE_TRESOR;
+  return gain;
+}
+
+// ---------- Niveau de l'île (les paliers de beauté) ----------
+
+/** Tout ce que la beauté débloque, dans l'ordre : { seuil, genre: 'batiment' | 'decor' | 'ile', type, nom }. */
+export function paliers() {
+  return [
+    ...ORDRE_BATIMENTS.filter((t) => BATIMENTS[t].debloque).map((t) => ({ seuil: BATIMENTS[t].debloque, genre: 'batiment', type: t, nom: BATIMENTS[t].nom })),
+    ...ORDRE_DECORS.filter((t) => DECORS[t].debloque).map((t) => ({ seuil: DECORS[t].debloque, genre: 'decor', type: t, nom: DECORS[t].nom })),
+    ...ILES.slice(1).map((ile, i) => ({ seuil: ile.seuil, genre: 'ile', type: i + 1, nom: ile.nom })),
+  ].sort((a, b) => a.seuil - b.seuil);
+}
+/** Le niveau de l'île : 1 au départ, +1 à chaque seuil de beauté franchi. */
+export function niveauIle(e) {
+  const b = beauteTotale(e);
+  return 1 + [...new Set(paliers().map((p) => p.seuil))].filter((s) => s <= b).length;
+}
+/** Où en est-on entre deux seuils : { niveau, beaute, de, vers (null au maximum) }. */
+export function progressionIle(e) {
+  const b = beauteTotale(e);
+  const seuils = [0, ...new Set(paliers().map((p) => p.seuil))];
+  const vers = seuils.find((s) => s > b) ?? null;
+  const de = [...seuils].reverse().find((s) => s <= b) ?? 0;
+  return { niveau: niveauIle(e), beaute: b, de, vers };
 }
 
 /** Pose une décoration (tout de suite). */
@@ -463,5 +616,7 @@ export function actualiser(e, t) {
       evenements.push({ genre: 'amenage', n, cle: k, action: w.action, gain: a.gain });
     }
   });
+  const tresor = actualiserTresor(e, t);
+  if (tresor) evenements.push(tresor);
   return evenements;
 }

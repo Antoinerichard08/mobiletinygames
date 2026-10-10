@@ -88,6 +88,22 @@ const MOUETTE = { W: '#ffffff', w: '#c9d2dc', g: '#7d8794' };
 motif(4, 5, 4, 5, ['g......g', '.w....w.', '..wWWw..', '....W...'], MOUETTE);
 motif(5, 5, 4, 6, ['........', 'gwwWWwwg', '...WW...'], MOUETTE);
 
+// bouteille à la mer (le trésor qui s'échoue sur la plage), sur fond transparent
+const BOUTEILLE = { k: '#a65d25', K: '#714114', g: '#1f5e3a', G: '#3fa36b', h: '#9fe0b4', W: '#f4ead2', w: '#d9c9a0' };
+motif(6, 5, 2, 2, [
+  '..........Kk',
+  '.........Kkk',
+  '........gGG.',
+  '.......gGhGg',
+  '......gGWWGg',
+  '.....gGWwWg.',
+  '....gGWWwg..',
+  '...gGhWWg...',
+  '..gGGGGg....',
+  '..gGGGg.....',
+  '...ggg......',
+], BOUTEILLE);
+
 // ---------- Terrains et chantiers sur l'herbe (rangée 6) ----------
 const BOIS = { t: '#714114', T: '#a65d25', c: '#c8772c', s: '#593411' };
 function terreBattue(c, r) {

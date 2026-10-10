@@ -18,7 +18,7 @@ import './progression/branchement.js';
 import carte from './progression/carte.js';
 import { niveau, etat as etatAventure, niveauCourant, statut } from './progression/niveaux.js';
 import { liste as listeMissions } from './progression/missions.js';
-import ile from './ile/index.js';
+import ile, { apercuIle } from './ile/index.js';
 
 lireModeDevDansAdresse(); // « ?dev=1 » active le mode développeur sur ce téléphone
 const app = $('#app');
@@ -44,11 +44,13 @@ ecouter('etoiles', ({ solde: n }) => {
 // ---------- Navigation : le bouton Retour d'Android remonte d'un écran ----------
 
 const idDepuisAdresse = () => location.hash.replace(/^#\/?/, '');
-const parent = (id) => (id.startsWith('niveau/') ? 'niveaux' : '');
+// un jeu lancé depuis l'île y ramène (l'île est le cœur de l'appli)
+const parent = (id) => (id.startsWith('niveau/') ? 'niveaux' : parcours[parcours.length - 2] === 'ile' && JEUX.some((j) => j.id === id) ? 'ile' : '');
 const profondeur = (id) => (!id ? 0 : id.startsWith('niveau/') ? 2 : 1);
 
 /** Revenir à un écran : en reculant dans l'historique si on en vient, sinon en remplaçant l'adresse. */
 function revenirA(cible) {
+  if (cible === '' && parent(idDepuisAdresse()) === 'ile') cible = 'ile';
   if (parcours.length >= 2 && parcours[parcours.length - 2] === cible) {
     history.back();
   } else {
@@ -115,7 +117,6 @@ function texteTuile(jeu) {
 }
 
 const ICONE_AVENTURE = `<svg viewBox="0 0 64 64" aria-hidden="true"><rect class="ic-mer" x="4" y="4" width="56" height="56" rx="12"/><path d="M14 46c6-10 14 4 20-6s12-14 18-22" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="1 6" stroke-linecap="round"/><circle cx="14" cy="46" r="6" fill="#1D5C48" stroke="#fff" stroke-width="2.5"/><circle cx="52" cy="18" r="7" fill="#F2B705" stroke="#fff" stroke-width="2.5"/><path d="M30 33h12l-2 5H32z" fill="#7A3E1D"/><path d="M36 22v11M36 22l6 8h-6" fill="#fff" stroke="#fff" stroke-width="1.5"/></svg>`;
-const ICONE_ILE = `<svg viewBox="0 0 64 64" aria-hidden="true"><rect class="ic-mer" x="4" y="4" width="56" height="56" rx="12"/><ellipse cx="32" cy="40" rx="22" ry="11" fill="#E8D7A8"/><ellipse cx="32" cy="37" rx="19" ry="9" fill="#328C19"/><path d="M20 36l7-7 7 7v5H20z" fill="#C25B3A"/><rect x="23" y="35" width="8" height="6" fill="#F4EEDD"/><circle cx="42" cy="31" r="6" fill="#2E5E2B"/><rect x="41" y="34" width="2" height="6" fill="#6B4A2B"/></svg>`;
 
 function afficherAccueil() {
   if (miseAJourEnAttente) {
@@ -128,6 +129,12 @@ function afficherAccueil() {
   const ouvert = statut(courant, e) === 'ouvert';
   const missions = listeMissions();
   const faites = missions.filter((x) => x.faite).length;
+  const monIle = apercuIle();
+  const nouvelles = [
+    monIle.bouteille ? 'Une bouteille sur la plage !' : '',
+    monIle.aRamasser ? `${monIle.aRamasser} à ramasser` : '',
+    monIle.chantiers ? `${monIle.chantiers} chantier${monIle.chantiers > 1 ? 's' : ''} en cours` : '',
+  ].filter(Boolean);
   app.innerHTML = `
     <section id="home" class="screen">
       <div class="home-top">
@@ -144,11 +151,18 @@ function afficherAccueil() {
         <button class="btn install-aide" id="install-aide" hidden>Comment installer l’appli sur le téléphone ?</button>
         <p class="status" id="install-msg" aria-live="polite" hidden></p>
       </div>
+      <button class="ile-heros" data-aller="ile">
+        <span class="ile-heros-mer">${monIle.miniature}</span>
+        <span class="ile-heros-texte">
+          <span class="t-name">Mon île</span>
+          <span class="t-desc">Niveau ${monIle.niveau} · beauté ${monIle.beaute} · ${soldeTexte()} ★ à dépenser</span>
+          ${nouvelles.length ? `<span class="ile-heros-nouvelles">${nouvelles.map((x) => `<span>${x}</span>`).join('')}</span>` : '<span class="t-desc">Construisez, récoltez, agrandissez votre île.</span>'}
+          <span class="ile-heros-bouton">Aller sur mon île</span>
+        </span>
+      </button>
       <div class="tiles grandes">
         <button class="tile mode" data-aller="niveaux">${ICONE_AVENTURE}<span><span class="t-name">Aventure</span>
           <span class="t-desc">${ouvert ? `Niveau ${courant} vous attend · ${e.jetons} nouveau${e.jetons > 1 ? 'x' : ''} aujourd’hui` : `Niveau ${courant} : ouvert demain. Rejouez pour plus d’étoiles !`}</span></span></button>
-        <button class="tile mode" data-aller="ile">${ICONE_ILE}<span><span class="t-name">Mon île</span>
-          <span class="t-desc">Construisez, récoltez, agrandissez votre île (${soldeTexte()} ★)</span></span></button>
       </div>
       <div class="missions-accueil">
         <p class="titre-section">Missions du jour <b>${faites}/3</b></p>
@@ -158,6 +172,7 @@ function afficherAccueil() {
       <div class="tiles"></div>
       <p class="foot">Aucune publicité, aucun compte. Vos parties restent sur ce téléphone.<br>Graphismes de l’île : « Tiny Islands » par Majadroid, « Tiny Town » par Kenney.<br>Version ${VERSION}</p>
     </section>`;
+  monIle.peindre($('.miniature', app));
   const tuiles = $('.tiles:not(.grandes)', app);
   for (const jeu of JEUX) {
     const el = document.createElement('button');
@@ -170,7 +185,7 @@ function afficherAccueil() {
   }
   app.querySelectorAll('[data-aller]').forEach((b) => b.addEventListener('click', () => { location.hash = '#/' + b.dataset.aller; }));
   // les blocs arrivent l'un après l'autre
-  [...app.querySelectorAll('.tile, .missions-accueil')].forEach((el, n) => apparaitre(el, { delai: 40 + n * 60 }));
+  [...app.querySelectorAll('.ile-heros, .tile, .missions-accueil')].forEach((el, n) => apparaitre(el, { delai: 40 + n * 60 }));
   $('#install', app).addEventListener('click', installer);
   $('#dev-quitter', app)?.addEventListener('click', () => { definirModeDev(false); location.replace(location.pathname); });
   $('#install-aide', app).addEventListener('click', aideInstallation);
@@ -202,7 +217,7 @@ function enveloppe(id, titre, retour, avecPaysage, banniere) {
  */
 function afficherJeu(jeu, options = {}) {
   document.title = `${jeu.nom} · Mom's games`;
-  const corps = enveloppe(jeu.id, jeu.nom, options.defi ? '← Carte' : '← Accueil', jeu.paysage,
+  const corps = enveloppe(jeu.id, jeu.nom, options.defi ? '← Carte' : parent(jeu.id) === 'ile' ? '← Mon île' : '← Accueil', jeu.paysage,
     options.defi ? `Niveau ${options.defi.numero} : ${options.defi.objectif}` : '');
   actif = jeu;
   jeu.monter(corps, options);
@@ -210,6 +225,13 @@ function afficherJeu(jeu, options = {}) {
 
 function afficherEcran(module, titre) {
   document.title = `${titre} · Mom's games`;
+  if (module.pleinEcran) {
+    // l'écran prend tout : pas de barre de titre, il a ses propres boutons
+    app.innerHTML = `<section class="screen plein" id="${module.id}"><div class="game-body"></div></section>`;
+    actif = module;
+    module.monter($('.game-body', app));
+    return;
+  }
   const corps = enveloppe(module.id, titre, '← Accueil', false, '');
   actif = module;
   module.monter(corps);
