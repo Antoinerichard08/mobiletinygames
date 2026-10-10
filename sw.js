@@ -2,7 +2,7 @@
 // À chaque nouvelle version, « npm run nouvelle-version -- X.Y.Z » change VERSION (et la liste des fichiers) :
 // le navigateur voit que ce fichier a changé, télécharge la nouvelle version et efface l'ancienne.
 
-const VERSION = '1.2.2';
+const VERSION = '1.3.0';
 const CACHE = `salon-de-jeux-${VERSION}`;
 
 // FICHIERS-DEBUT (liste générée par scripts/nouvelle-version.mjs, vérifiée par les tests)
@@ -18,6 +18,7 @@ const FICHIERS = [
   'assets/icons/icone-512.png',
   'assets/icons/icone-maskable-512.png',
   'assets/icons/logo-256.png',
+  'assets/ile/sprites.png',
   'assets/ile/tuiles.png',
   'src/app.js',
   'src/core/dialogue.js',
@@ -54,6 +55,7 @@ const FICHIERS = [
   'src/ile/ile.css',
   'src/ile/index.js',
   'src/ile/regles.js',
+  'src/ile/vie.js',
   'src/progression/branchement.js',
   'src/progression/carte.css',
   'src/progression/carte.js',

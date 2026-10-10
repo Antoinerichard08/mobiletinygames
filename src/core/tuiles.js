@@ -16,6 +16,24 @@ export const T = {
   batiments: { hameau: 1, maison: 3, champ: 5, ferme: 7, chateau: 9, port: 11, village: 13 },
 };
 
+/**
+ * Planche « assets/ile/sprites.png » (16 × 8 cases), dessinée par scripts/generer-sprites.mjs :
+ * villageois animés, animaux, chantiers, terrains aménagés, décor (Tiny Town de Kenney, CC0).
+ */
+export const S = {
+  habitant: (variante, image) => [image, variante], // variante 0..4 ; image 0 debout, 1-2 marche, 3-4 travail, 5-6 porte
+  mouton: [[0, 5], [1, 5]], poule: [[2, 5], [3, 5]], mouette: [[4, 5], [5, 5]],
+  chantier: [[0, 6], [1, 6], [2, 6]], souche: [3, 6], gravats: [4, 6], etang: [5, 6], pousse: [7, 6],
+  fleurs: [6, 6], fleurs2: [11, 6], carriere: [[8, 6], [9, 6], [10, 6]],
+  decor: { automne: [0, 7], sapin: [1, 7], arbre: [2, 7], buisson: [3, 7], champignons: [4, 7], ruche: [5, 7], puits: [6, 7], panneau: [7, 7], fleurs: [6, 6] },
+  outils: { hache: [8, 7], pioche: [9, 7], pelle: [10, 7], fourche: [11, 7], buche: [12, 7], seau: [13, 7] },
+};
+
+/** Une case de la planche de sprites, de `taille` pixels. */
+export function sprite([c, r], taille, classe = '', style = '') {
+  return `<span class="sprite ${classe}" style="--tc:${c};--tr:${r};--ts:${taille}px;${style}" aria-hidden="true"></span>`;
+}
+
 /** Coordonnées d'un bâtiment à un niveau donné (1 à 3, ou 4 pour le village). */
 export const tuileBatiment = (type, niveau = 1) => [T.batiments[type], 4 + Math.min(niveau, type === 'village' ? 4 : 3)];
 

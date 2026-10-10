@@ -1,6 +1,6 @@
 {
   "name": "salon-de-jeux",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "description": "Jeux classiques sans publicité, pensés pour les seniors : Sudoku, Solitaire, Dames.",
   "private": true,
   "type": "module",
@@ -10,6 +10,7 @@
     "test": "node --test \"tests/*.test.js\"",
     "icones": "node scripts/generer-icones.mjs",
     "polices": "node scripts/copier-polices.mjs",
+    "sprites": "node scripts/generer-sprites.mjs",
     "site": "node scripts/preparer-site.mjs _site",
     "nouvelle-version": "node scripts/nouvelle-version.mjs"
   },

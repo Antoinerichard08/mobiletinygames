@@ -239,3 +239,10 @@ button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .home-top .logo { width: 64px; height: 64px; border-radius: 16px; flex: none; box-shadow: 0 3px 8px rgba(0, 0, 0, .15); }
 .home-top .titre { flex: 1; min-width: 0; }
 .home-top h1 { font-size: 1.9rem; white-space: nowrap; }
+.sprite {
+  display: block; width: var(--ts); height: var(--ts); flex: none;
+  background-image: url('../../assets/ile/sprites.png'); background-repeat: no-repeat;
+  background-size: calc(var(--ts) * 16) calc(var(--ts) * 8);
+  background-position: calc(var(--tc) * var(--ts) * -1) calc(var(--tr) * var(--ts) * -1);
+  image-rendering: pixelated;
+}

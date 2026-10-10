@@ -41,7 +41,10 @@ Pour une nouvelle version : refaire les mêmes étapes, le bouton s'appellera **
 - **Aventure** : une carte en mer, d'escale en escale. **3 nouveaux niveaux s'ouvrent chaque jour** ; les niveaux
   déjà réussis se rejouent quand on veut pour gagner plus d'étoiles. Les **missions du jour** donnent des étoiles en plus.
 - **Mon île** : choisissez un bâtiment en bas, puis touchez une case : le chiffre montre les points de beauté gagnés,
-  la meilleure case brille. Une île très belle en fait apparaître une nouvelle !
+  la meilleure case brille. Les habitants construisent (on voit le chantier avancer), puis récoltent tout seuls du
+  **bois**, de la **pierre** et du **blé**, même quand l'appli est fermée : touchez les petites bulles, ou
+  « Tout ramasser ». On peut aussi abattre la forêt, casser les rochers, planter des arbres, creuser un étang,
+  décorer et **agrandir l'île**. Une île très belle en fait apparaître une nouvelle !
 - Le **Solitaire**, les **Dames**, le **Sudoku** et le **Backgammon** se jouent aussi téléphone tourné à l'horizontale.
 
 ---
@@ -65,11 +68,13 @@ src/registre.js                           LA liste des jeux : l'accueil est gén
 src/core/                                 outils, stockage, dialogues, animations (mouvement.js), étoiles,
                                           fin de partie commune (partie.js), calculs en arrière-plan (travail.js)
 src/progression/                          Aventure : niveaux.js (carte, rythme quotidien), missions.js, carte.js (écran)
-src/ile/                                  Mon île : regles.js (sans navigateur, testé), index.js (écran)
+src/ile/                                  Mon île : regles.js (règles, ressources en temps réel ; testé), index.js (écran),
+                                          vie.js (habitants, animaux, fumée, mouettes)
 src/games/<jeu>/index.js                  affichage et commandes du jeu
 src/games/<jeu>/moteur.js                 règles, IA, génération : sans navigateur, testé avec Node
 src/games/<jeu>/<jeu>.css                 styles propres au jeu
-assets/                                   polices, icônes (PWA et Android), tuiles de l'île (assets/ile, CC0)
+assets/                                   polices, icônes (PWA et Android), tuiles et sprites de l'île (assets/ile)
+design/                                   logo source, planche Kenney (sources des scripts d'images)
 scripts/                                  serveur local, icônes, version, préparation du site
 tests/                                    tests Node (node:test)
 .github/workflows/                        publication GitHub Pages (et APK)
@@ -129,7 +134,12 @@ une appli légère, rapide sur un vieux téléphone et sous licence MIT, leurs t
   comme Solvitaire) ne distribue que des donnes gagnables en Facile et Moyen.
 - **Aventure** : le modèle de la « carte saga » popularisé par Candy Crush, avec un rythme quotidien.
 - **Mon île** : inspiré d'*Islanders* (points selon les voisins), sans malus, sans minuteur, sans échec.
-- **Graphismes de l'île et de la carte** : pack « Tiny Islands » de Majadroid (CC0), dans `assets/ile`.
+- **Graphismes de l'île et de la carte** : pack « Tiny Islands » de Majadroid (CC0), dans `assets/ile`. Les habitants,
+  animaux, chantiers et terrains aménagés sont dessinés par `scripts/generer-sprites.mjs` dans la même palette ;
+  le décor (arbres, ruche, puits, outils…) vient de « Tiny Town » de **Kenney** (CC0). Aucun autre pack libre
+  n'existait dans le même style : c'est le meilleur compromis trouvé.
+- **Mon île, ressources** : production calculée à partir de l'heure (horodatages), donc aussi appli fermée,
+  avec un plafond par bâtiment pour que rien ne se perde ni ne presse.
 
 ### Publier une nouvelle version
 
@@ -207,6 +217,15 @@ avec un message qui renvoie ici.
 > À noter : Google a annoncé que l'installation d'APK hors Play Store exigera progressivement (2026-2027) un
 > développeur enregistré auprès de Google. Si un jour l'APK ne s'installe plus, la PWA reste la solution
 > recommandée : elle n'est pas concernée.
+
+### Sprites de l'île
+
+```bash
+npm run sprites
+```
+
+Redessine `assets/ile/sprites.png` (habitants, animaux, chantiers, décor) à partir de `assets/ile/tuiles.png`
+et `design/kenney-tiny-town.png`. Les emplacements sont repris dans `src/core/tuiles.js` (constante `S`).
 
 ### Icônes
 

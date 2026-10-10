@@ -1,121 +1,238 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ILES, BATIMENTS, ORDRE_BATIMENTS, grille, estCote, voisins, peutPoser, pointsCase, beaute, apercu,
-  etatVide, beauteTotale, ilesOuvertes, estDebloque, prochainPalier, poser, agrandir, retirer, niveauMax,
+  ILES, BATIMENTS, DECORS, MINUTE, PLAFOND_PAR_NIVEAU, etatVide, migrer, cle, coord, estTerre, estCote, terrainDe,
+  peutPoser, construire, ameliorer, accelerer, prixAcceleration, actualiser, decorer, retirer, produit, stock,
+  ramasser, toutRamasser, amenager, peutAmenager, agrandir, coutAgrandir, obstacleAgrandir, beauteIle, beauteTotale,
+  ilesOuvertes, estDebloque, apercu, habitants, manque, pointsCase, voisinsDe,
 } from '../src/ile/regles.js';
 
+const T0 = 1_800_000_000_000;
 const bourse = (n) => {
   let etoiles = n;
   const payer = (prix) => (prix <= etoiles ? ((etoiles -= prix), true) : false);
   payer.reste = () => etoiles;
   return payer;
 };
-const premiereCase = (g, cases, type) => g.terrain.findIndex((_, i) => peutPoser(g, cases, i, type));
-
-test('chaque île a de la terre, de l’eau autour, quelques bois et rochers, toujours au même endroit', () => {
-  ILES.forEach((ile, n) => {
-    const g = grille(n);
-    assert.equal(g.terrain.length, (ile.l + 2) * (ile.h + 2));
-    assert.ok(g.terrain.includes('foret') && g.terrain.includes('montagne'));
-    assert.deepEqual(grille(n).terrain, g.terrain);
-    for (let x = 0; x < g.L; x++) assert.equal(g.terrain[x], 'eau', 'la première rangée est de l’eau');
-  });
-});
-
-test('côte : les bords d’eau sauf les coins', () => {
-  const g = grille(0);
-  assert.equal(estCote(g, 0), false, 'coin');
-  assert.equal(estCote(g, 1), true);
-  assert.equal(estCote(g, g.L + 1), false, 'terre');
-});
-
-test('voisins : 4 cases au plus, jamais en dehors de la grille', () => {
-  const g = grille(0);
-  assert.equal(voisins(g, 0).length, 2);
-  assert.equal(voisins(g, g.L + 1).length, 4);
-});
-
-test('on construit sur l’herbe, les ports sur l’eau du bord', () => {
-  const g = grille(0), cases = {};
-  const herbe = g.terrain.indexOf('herbe'), foret = g.terrain.indexOf('foret');
-  assert.equal(peutPoser(g, cases, herbe, 'maison'), true);
-  assert.equal(peutPoser(g, cases, foret, 'maison'), false);
-  assert.equal(peutPoser(g, cases, 1, 'maison'), false);
-  assert.equal(peutPoser(g, cases, 1, 'port'), true);
-  assert.equal(peutPoser(g, cases, herbe, 'port'), false);
-});
-
-test('points : base × niveau, plus les voisins aimés, jamais de malus', () => {
-  const g = grille(0);
-  const i = g.terrain.findIndex((t, k) => t === 'herbe' && voisins(g, k).some((v) => g.terrain[v] === 'foret'));
-  const cases = { [i]: { type: 'hameau', niveau: 1 } };
-  const forets = voisins(g, i).filter((v) => g.terrain[v] === 'foret').length;
-  assert.equal(pointsCase(g, cases, i), 2 + forets);
-  cases[i].niveau = 2;
-  assert.equal(pointsCase(g, cases, i), 4 + forets);
-  for (const type of ORDRE_BATIMENTS) for (const v of Object.values(BATIMENTS[type].aime)) assert.ok(v > 0);
-});
-
-test('l’aperçu compte aussi le bonus donné aux voisins', () => {
-  const g = grille(0);
-  const champ = g.terrain.findIndex((t, k) => t === 'herbe' && voisins(g, k).some((v) => g.terrain[v] === 'herbe'));
-  const cases = { [champ]: { type: 'champ', niveau: 1 } };
-  const voisin = voisins(g, champ).find((v) => peutPoser(g, cases, v, 'ferme'));
-  const gain = apercu(g, cases, voisin, 'ferme');
-  const apres = beaute(g, { ...cases, [voisin]: { type: 'ferme', niveau: 1 } });
-  assert.equal(gain, apres - beaute(g, cases));
-  assert.ok(gain >= BATIMENTS.ferme.base + 1 + 2, 'la ferme aime le champ, et le champ aime la ferme');
-});
-
-test('poser, agrandir, retirer : les étoiles sont payées puis remboursées', () => {
-  const e = etatVide();
-  const g = grille(0);
-  const payer = bourse(20);
-  const i = premiereCase(g, e.iles[0].cases, 'maison');
-  assert.equal(poser(e, 0, i, 'maison', payer).ok, true);
-  assert.equal(payer.reste(), 20 - 4);
-  assert.equal(poser(e, 0, i, 'hameau', payer).ok, false, 'case occupée');
-  assert.equal(agrandir(e, 0, i, payer).ok, true);
-  assert.equal(e.iles[0].cases[i].niveau, 2);
-  assert.equal(retirer(e, 0, i), 4 + 5);
-  assert.equal(e.iles[0].cases[i], undefined);
-});
-
-test('sans assez d’étoiles, rien ne se passe', () => {
-  const e = etatVide();
-  const g = grille(0);
-  const payer = bourse(2);
-  assert.deepEqual(poser(e, 0, premiereCase(g, {}, 'maison'), 'maison', payer), { ok: false, raison: 'etoiles' });
-  assert.equal(payer.reste(), 2);
-});
-
-test('agrandir jusqu’au niveau maximal seulement', () => {
-  const e = etatVide();
-  const payer = bourse(999);
-  const i = premiereCase(grille(0), {}, 'hameau');
-  poser(e, 0, i, 'hameau', payer);
-  for (let k = 1; k < niveauMax('hameau'); k++) assert.equal(agrandir(e, 0, i, payer).ok, true);
-  assert.deepEqual(agrandir(e, 0, i, payer), { ok: false, raison: 'max' });
-});
-
-test('déblocages : nouveaux bâtiments puis nouvelles îles avec la beauté', () => {
-  const e = etatVide();
-  assert.equal(estDebloque(e, 'hameau'), true);
-  assert.equal(estDebloque(e, 'chateau'), false);
-  assert.equal(ilesOuvertes(e), 1);
-  assert.equal(prochainPalier(e).seuil, BATIMENTS.ferme.debloque);
-  // on remplit l'île en agrandissant tout au maximum
-  const payer = bourse(100000);
-  let n = 0;
-  while (beauteTotale(e) < ILES[1].seuil) {
-    const g = grille(n);
-    const type = ['hameau', 'champ', 'maison'][Object.keys(e.iles[n].cases).length % 3];
-    const i = premiereCase(g, e.iles[n].cases, type);
-    if (i < 0) { n++; continue; }
-    poser(e, n, i, type, payer);
-    while (agrandir(e, n, i, payer).ok);
+/** Première case d'herbe libre de l'île 0 qui vérifie une condition. */
+function caseHerbe(e, condition = () => true) {
+  const ile = e.iles[0];
+  for (let y = ile.ext.y0; y <= ile.ext.y1; y++) for (let x = ile.ext.x0; x <= ile.ext.x1; x++) {
+    if (terrainDe(ile, x, y) === 'herbe' && !ile.cases[cle(x, y)] && condition(x, y)) return [x, y];
   }
+  return null;
+}
+const pres = (e, terrain) => (x, y) => voisinsDe(x, y).some(([vx, vy]) => terrainDe(e.iles[0], vx, vy) === terrain);
+
+test('île de départ : terre au milieu, eau autour, quelques bois et rochers', () => {
+  const e = etatVide();
+  const ile = e.iles[0];
+  assert.equal(ile.ext.x1 - ile.ext.x0 + 1, ILES[0].l);
+  assert.ok(Object.values(ile.terrain).includes('foret'));
+  assert.ok(Object.values(ile.terrain).includes('montagne'));
+  assert.equal(estTerre(ile, 0, 0), false);
+  assert.equal(estCote(ile, 0, 1), true);
+  assert.equal(estCote(ile, 0, 0), false, 'coin');
+  assert.deepEqual(etatVide().iles[0].terrain, ile.terrain, 'toujours la même île');
+});
+
+test('construire : on paie, un chantier démarre, puis le bâtiment est fini', () => {
+  const e = etatVide();
+  const payer = bourse(10);
+  const [x, y] = caseHerbe(e);
+  assert.equal(construire(e, 0, x, y, 'champ', payer.reste(), payer, T0).ok, true);
+  assert.equal(payer.reste(), 7);
+  const c = e.iles[0].cases[cle(x, y)];
+  assert.equal(c.niveau, 0);
+  assert.equal(beauteIle(e.iles[0]), 0, 'pas de beauté pendant le chantier');
+  assert.deepEqual(actualiser(e, T0 + 10_000), []);
+  const ev = actualiser(e, T0 + BATIMENTS.champ.duree * MINUTE);
+  assert.equal(ev[0].genre, 'construit');
+  assert.equal(c.niveau, 1);
+  assert.ok(beauteIle(e.iles[0]) > 0);
+});
+
+test('il faut aussi des ressources : ce qui manque est indiqué', () => {
+  const e = etatVide();
+  const payer = bourse(20);
+  const [x, y] = caseHerbe(e);
+  const r = construire(e, 0, x, y, 'maison', payer.reste(), payer, T0);
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.manque, { bois: 6 });
+  assert.equal(payer.reste(), 20, 'rien n’est payé');
+  e.ressources.bois = 6;
+  assert.equal(construire(e, 0, x, y, 'maison', payer.reste(), payer, T0).ok, true);
+  assert.equal(e.ressources.bois, 0);
+  assert.deepEqual(manque(e, 0, { etoiles: 2, pierre: 1 }), { etoiles: 2, pierre: 1 });
+});
+
+test('production en temps réel, avec un plafond, même appli fermée', () => {
+  const e = etatVide();
+  const payer = bourse(10);
+  const [x, y] = caseHerbe(e);
+  construire(e, 0, x, y, 'champ', 10, payer, T0);
+  const fin = T0 + BATIMENTS.champ.duree * MINUTE;
+  actualiser(e, fin);
+  const ile = e.iles[0];
+  const unite = BATIMENTS.champ.prod.minutes * MINUTE;
+  assert.equal(stock(ile, x, y, fin + unite * 3.5), 3);
+  assert.equal(stock(ile, x, y, fin + unite * 1000), PLAFOND_PAR_NIVEAU, 'plafond atteint, rien ne se perd');
+  const r = ramasser(e, 0, x, y, fin + unite * 3.5);
+  assert.deepEqual(r, { res: 'ble', n: 3 });
+  assert.equal(e.ressources.ble, 3);
+  assert.equal(stock(ile, x, y, fin + unite * 4), 1, 'l’unité en cours est conservée');
+});
+
+test('la cabane de bûcheron ne coupe du bois que près d’une forêt', () => {
+  const e = etatVide();
+  const payer = bourse(20);
+  const loin = caseHerbe(e, (x, y) => {
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (Math.abs(dx) + Math.abs(dy) <= 2 && terrainDe(e.iles[0], x + dx, y + dy) === 'foret') return false;
+    return true;
+  });
+  const proche = caseHerbe(e, pres(e, 'foret'));
+  assert.ok(proche);
+  construire(e, 0, ...proche, 'hameau', 20, payer, T0);
+  if (loin) construire(e, 0, ...loin, 'hameau', 20, payer, T0);
+  actualiser(e, T0 + 10 * MINUTE);
+  assert.equal(produit(e.iles[0], ...proche), true);
+  if (loin) assert.equal(produit(e.iles[0], ...loin), false);
+  const total = toutRamasser(e, T0 + 30 * MINUTE);
+  assert.ok(total.bois > 0);
+});
+
+test('améliorer : nouveau chantier, coût du niveau suivant, accélération possible', () => {
+  const e = etatVide();
+  const payer = bourse(50);
+  const [x, y] = caseHerbe(e);
+  construire(e, 0, x, y, 'champ', 50, payer, T0);
+  actualiser(e, T0 + MINUTE);
+  e.ressources.bois = 4;
+  assert.equal(ameliorer(e, 0, x, y, payer.reste(), payer, T0 + MINUTE).ok, true);
+  assert.equal(e.ressources.bois, 0);
+  const c = e.iles[0].cases[cle(x, y)];
+  assert.equal(c.niveau, 1, 'continue de produire pendant les travaux');
+  assert.ok(prixAcceleration(c, T0 + MINUTE) >= 1);
+  assert.equal(accelerer(e, 0, x, y, payer, T0 + MINUTE).ok, true);
+  actualiser(e, T0 + MINUTE);
+  assert.equal(c.niveau, 2);
+});
+
+test('aménager : abattre donne du bois, casser donne de la pierre, planter fait pousser une forêt', () => {
+  const e = etatVide();
+  const ile = e.iles[0];
+  const foret = Object.keys(ile.terrain).find((k) => ile.terrain[k] === 'foret');
+  const roche = Object.keys(ile.terrain).find((k) => ile.terrain[k] === 'montagne');
+  const payer = bourse(5);
+  assert.equal(amenager(e, 0, ...coord(foret), 'abattre', 5, payer, T0).ok, true);
+  assert.equal(amenager(e, 0, ...coord(roche), 'casser', 5, payer, T0).ok, true);
+  assert.equal(peutAmenager(ile, ...coord(foret), 'abattre'), false, 'déjà en travaux');
+  actualiser(e, T0 + 5 * MINUTE);
+  assert.equal(terrainDe(ile, ...coord(foret)), 'herbe');
+  assert.equal(e.ressources.bois, 4);
+  assert.equal(e.ressources.pierre, 4);
+  assert.equal(amenager(e, 0, ...coord(foret), 'planter', 5, payer, T0 + 5 * MINUTE).ok, true);
+  assert.equal(e.ressources.bois, 3);
+  actualiser(e, T0 + 20 * MINUTE);
+  assert.equal(terrainDe(ile, ...coord(foret)), 'foret');
+});
+
+test('un étang embellit l’île et ses voisins', () => {
+  const e = etatVide();
+  const payer = bourse(10);
+  const [x, y] = caseHerbe(e);
+  amenager(e, 0, x, y, 'creuser', 10, payer, T0);
+  actualiser(e, T0 + MINUTE);
+  assert.equal(terrainDe(e.iles[0], x, y), 'etang');
+  assert.ok(beauteIle(e.iles[0]) >= 3);
+});
+
+test('décorer : pose immédiate, beauté et bonus de voisinage', () => {
+  const e = etatVide();
+  const payer = bourse(10);
+  const [x, y] = caseHerbe(e);
+  const gain = apercu(e.iles[0], x, y, 'fleurs');
+  const r = decorer(e, 0, x, y, 'fleurs', 10, payer);
+  assert.equal(r.ok, true);
+  assert.equal(r.gain, gain);
+  assert.equal(pointsCase(e.iles[0], x, y), DECORS.fleurs.beaute);
+  assert.equal(estDebloque(e, 'puits'), false, 'le puits demande une île plus belle');
+});
+
+test('retirer rend ce qui a été payé', () => {
+  const e = etatVide();
+  const payer = bourse(20);
+  const [x, y] = caseHerbe(e);
+  e.ressources.bois = 6;
+  construire(e, 0, x, y, 'maison', 20, payer, T0);
+  const rendu = retirer(e, 0, x, y);
+  assert.deepEqual(rendu, { etoiles: 4, bois: 6 });
+  assert.equal(e.ressources.bois, 6);
+  assert.equal(e.iles[0].cases[cle(x, y)], undefined);
+});
+
+test('agrandir l’île : une rangée de terre en plus, payée en étoiles et en pierre', () => {
+  const e = etatVide();
+  const ile = e.iles[0];
+  const payer = bourse(20);
+  const cout = coutAgrandir(ile, 'sud');
+  assert.deepEqual(cout, { etoiles: 4, pierre: 2 * ILES[0].l });
+  assert.equal(agrandir(e, 0, 'sud', 20, payer).raison, 'cout');
+  e.ressources.pierre = 50;
+  const h = ile.ext.y1;
+  assert.equal(agrandir(e, 0, 'sud', 20, payer).ok, true);
+  assert.equal(ile.ext.y1, h + 1);
+  assert.equal(terrainDe(ile, ile.ext.x0, ile.ext.y1), 'herbe');
+  while (agrandir(e, 0, 'nord', 20, () => true).ok);
+  assert.equal(obstacleAgrandir(ile, 'nord'), 'max');
+});
+
+test('on ne peut pas agrandir par-dessus un port', () => {
+  const e = etatVide();
+  const ile = e.iles[0];
+  e.ressources.bois = 100;
+  e.iles[0].cases[cle(ile.ext.x0, ile.ext.y1 + 1)] = { type: 'port', niveau: 1, chantier: null };
+  assert.equal(obstacleAgrandir(ile, 'sud'), 'port');
+});
+
+test('habitants : selon les maisons terminées', () => {
+  const e = etatVide();
+  const payer = bourse(50);
+  e.ressources.bois = 20;
+  const [x, y] = caseHerbe(e);
+  construire(e, 0, x, y, 'maison', 50, payer, T0);
+  assert.equal(habitants(e), 0);
+  actualiser(e, T0 + 10 * MINUTE);
+  assert.equal(habitants(e), 2);
+});
+
+test('les îles suivantes s’ouvrent avec la beauté', () => {
+  const e = etatVide();
+  assert.equal(ilesOuvertes(e), 1);
+  const ile = e.iles[0];
+  for (let y = ile.ext.y0; y <= ile.ext.y1; y++) for (let x = ile.ext.x0; x <= ile.ext.x1; x++) {
+    if (terrainDe(ile, x, y) === 'herbe') ile.cases[cle(x, y)] = { type: 'maison', niveau: 3, chantier: null };
+  }
+  assert.ok(beauteTotale(e) >= ILES[1].seuil);
   assert.ok(ilesOuvertes(e) >= 2);
-  assert.equal(estDebloque(e, 'village'), true);
+});
+
+test('migration : une sauvegarde de la première version est reprise telle quelle', () => {
+  const L = ILES[0].l + 2;
+  const ancien = { iles: [{ cases: { [L + 2]: { type: 'maison', niveau: 2 }, [1]: { type: 'port', niveau: 1 } } }, { cases: {} }, { cases: {} }, { cases: {} }], active: 0 };
+  const e = migrer(ancien, T0);
+  assert.equal(e.version, 2);
+  assert.deepEqual(e.iles[0].cases[cle(2, 1)].niveau, 2);
+  assert.equal(e.iles[0].cases[cle(1, 0)].type, 'port');
+  assert.equal(estCote(e.iles[0], 1, 0), true);
+  assert.equal(migrer(e, T0), e, 'une sauvegarde déjà en version 2 ne change pas');
+});
+
+test('les ports se posent sur l’eau du bord, le reste sur l’herbe', () => {
+  const e = etatVide();
+  const ile = e.iles[0];
+  assert.equal(peutPoser(ile, 1, 0, 'port'), true);
+  assert.equal(peutPoser(ile, 1, 0, 'maison'), false);
+  const [x, y] = caseHerbe(e);
+  assert.equal(peutPoser(ile, x, y, 'port'), false);
 });

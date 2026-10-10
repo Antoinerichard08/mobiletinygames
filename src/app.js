@@ -143,7 +143,7 @@ function afficherAccueil() {
         <button class="tile mode" data-aller="niveaux">${ICONE_AVENTURE}<span><span class="t-name">Aventure</span>
           <span class="t-desc">${ouvert ? `Niveau ${courant} vous attend · ${e.jetons} nouveau${e.jetons > 1 ? 'x' : ''} aujourd’hui` : `Niveau ${courant} : ouvert demain. Rejouez pour plus d’étoiles !`}</span></span></button>
         <button class="tile mode" data-aller="ile">${ICONE_ILE}<span><span class="t-name">Mon île</span>
-          <span class="t-desc">Construisez votre île avec vos ${solde()} étoiles</span></span></button>
+          <span class="t-desc">Construisez, récoltez, agrandissez votre île (${solde()} ★)</span></span></button>
       </div>
       <div class="missions-accueil">
         <p class="titre-section">Missions du jour <b>${faites}/3</b></p>
@@ -151,7 +151,7 @@ function afficherAccueil() {
       </div>
       <p class="titre-section">Jeux libres</p>
       <div class="tiles"></div>
-      <p class="foot">Aucune publicité, aucun compte. Vos parties restent sur ce téléphone.<br>Graphismes de l’île : « Tiny Islands » par Majadroid.<br>Version ${VERSION}</p>
+      <p class="foot">Aucune publicité, aucun compte. Vos parties restent sur ce téléphone.<br>Graphismes de l’île : « Tiny Islands » par Majadroid, « Tiny Town » par Kenney.<br>Version ${VERSION}</p>
     </section>`;
   const tuiles = $('.tiles:not(.grandes)', app);
   for (const jeu of JEUX) {
