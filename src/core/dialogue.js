@@ -1,5 +1,6 @@
 // Fenêtre de dialogue en bas d'écran, grosse et lisible.
 // demander() renvoie une promesse : true si l'on touche le bouton principal, false sinon.
+import { animer } from './mouvement.js';
 
 let fond = null;
 let terminer = null;
@@ -42,6 +43,9 @@ export function demander({ titre, texte = '', oui = 'OK', non = '' }) {
   btnNon.hidden = !non;
   focusAvant = document.activeElement;
   fond.hidden = false;
+  // la fenêtre monte du bas de l'écran
+  animer(fond, [{ opacity: 0 }, { opacity: 1 }], { duration: 180 });
+  animer(fond.firstElementChild, [{ transform: 'translateY(60px)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 320 });
   btnOui.focus();
   return new Promise((resoudre) => {
     terminer = resoudre;

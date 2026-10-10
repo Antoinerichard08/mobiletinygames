@@ -37,3 +37,20 @@
 @media (prefers-reduced-motion: no-preference) {
   .cell, .pad button { transition: background-color .12s; }
 }
+
+.sdk-body { display: flex; flex-direction: column; gap: 14px; }
+.sdk-side { display: flex; flex-direction: column; gap: 12px; }
+.cell { will-change: transform; }
+@media (prefers-reduced-motion: no-preference) { .pad button { transition: transform .1s, background-color .12s; } }
+.pad button:active { transform: scale(.94); }
+
+/* Téléphone à l'horizontale : la grille à gauche, le pavé et les commandes à droite */
+@media (orientation: landscape) and (max-height: 560px) {
+  .sdk-body { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 16px; row-gap: 8px; align-items: start; }
+  .sdk { grid-column: 1; grid-row: 1 / span 2; width: calc(100vh - 24px); max-width: 50vw; }
+  .sdk-level { grid-column: 2; grid-row: 1; margin-right: calc(var(--cote) + 8px); }
+  .sdk-side { grid-column: 2; grid-row: 2; gap: 8px; }
+  .sdk-body:not(:has(.sdk-level)) .sdk-side { grid-row: 1 / span 2; padding-top: 64px; }
+  .pad button { min-height: 52px; font-size: 1.4rem; }
+  .sdk-side .status { min-height: 0; font-size: .95rem; }
+}

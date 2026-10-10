@@ -4,6 +4,18 @@ import { VERSION } from './version.js';
 import { $ } from './core/outils.js';
 import { victoires } from './core/stockage.js';
 import { fermerDialogue } from './core/dialogue.js';
+import { solde } from './core/etoiles.js';
+import { ecouter } from './core/evenements.js';
+import { animer, apparaitre, mouvementReduit, pop } from './core/mouvement.js';
+
+// Le compteur d'étoiles de l'accueil se met à jour (et saute un peu) quand on en gagne.
+ecouter('etoiles', ({ solde: n }) => {
+  const puce = document.getElementById('star-chip');
+  if (!puce) return;
+  puce.querySelector('b').textContent = n;
+  puce.setAttribute('aria-label', `${n} étoiles`);
+  pop(puce, 1.25);
+});
 
 const app = $('#app');
 // Dans l'APK (Capacitor), les fichiers sont déjà dans l'appli : pas de service worker ni d'installation.
@@ -20,6 +32,24 @@ function idDepuisAdresse() {
   return location.hash.replace(/^#\/?/, '');
 }
 
+let ecranPrecedent = '';
+
+/** Change d'écran avec une transition douce (glissement vers la gauche en avançant, vers la droite en revenant). */
+function changerEcran(dessinerEcran, sens) {
+  const surPlace = () => {
+    dessinerEcran();
+    window.scrollTo(0, 0);
+  };
+  if (mouvementReduit() || !document.startViewTransition) {
+    surPlace();
+    const ecran = $('.screen', app);
+    if (ecran && !mouvementReduit()) animer(ecran, [{ opacity: 0, transform: `translateX(${sens === 'arriere' ? -24 : 24}px)` }, { opacity: 1, transform: 'none' }], { duration: 260 });
+    return;
+  }
+  document.documentElement.dataset.sens = sens;
+  document.startViewTransition(surPlace);
+}
+
 function route() {
   fermerDialogue(false);
   document.querySelectorAll('.sheet.result-sheet, .sheet.temp').forEach((s) => s.remove()); // fenêtres de fin de partie, de choix…
@@ -27,10 +57,13 @@ function route() {
     jeuActif.demonter();
     jeuActif = null;
   }
-  const jeu = JEUX.find((j) => j.id === idDepuisAdresse() && !j.bientot);
-  if (jeu) afficherJeu(jeu);
-  else afficherAccueil();
-  window.scrollTo(0, 0);
+  const id = idDepuisAdresse();
+  // profondeur : accueil 0, un jeu / la carte / l'île 1, un niveau de la carte 2
+  const profondeur = (x) => (!x ? 0 : x.startsWith('niveau/') ? 2 : 1);
+  const sens = profondeur(id) >= profondeur(ecranPrecedent) ? 'avant' : 'arriere';
+  ecranPrecedent = id;
+  const jeu = JEUX.find((j) => j.id === id && !j.bientot);
+  changerEcran(() => (jeu ? afficherJeu(jeu) : afficherAccueil()), sens);
 }
 
 function allerAccueil() {
@@ -60,9 +93,12 @@ function afficherAccueil() {
   document.title = 'Salon de Jeux';
   app.innerHTML = `
     <section id="home" class="screen">
-      <div>
-        <h1>Salon de Jeux</h1>
-        <p class="lede">Vos jeux préférés, sans publicité.</p>
+      <div class="home-top">
+        <div>
+          <h1>Salon de Jeux</h1>
+          <p class="lede">Vos jeux préférés, sans publicité.</p>
+        </div>
+        <span class="star-chip" id="star-chip" aria-label="${solde()} étoiles">★ <b>${solde()}</b></span>
       </div>
       <div class="tiles"></div>
       <button class="btn primary install" id="install" hidden>Installer sur le téléphone</button>
@@ -85,6 +121,8 @@ function afficherAccueil() {
     }
     tuiles.append(el);
   }
+  // les tuiles arrivent l'une après l'autre
+  [...tuiles.children].forEach((el, n) => apparaitre(el, { delai: 60 + n * 70 }));
   const bouton = $('#install', app);
   bouton.hidden = !installation;
   bouton.addEventListener('click', installer);

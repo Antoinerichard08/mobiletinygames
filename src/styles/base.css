@@ -172,3 +172,34 @@ button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
   .screen.game[data-paysage] > .bar .btn { width: 100%; }
   .screen.game[data-paysage] > .bar h2 { display: none; }
 }
+
+/* ---------- Mouvement : boutons, accueil, transitions d'écran ---------- */
+.home-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.star-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px;
+  background: var(--surface); border: 2px solid var(--gold); font-weight: 700; font-size: 1.2rem; color: var(--ink);
+}
+.star-chip::first-letter { color: var(--gold); }
+.defi-banner {
+  background: var(--soft); border: 2px solid var(--brand); border-radius: 14px; padding: 10px 14px; font-weight: 700; text-align: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn, .tile { transition: background-color .12s, transform .12s cubic-bezier(.2, .8, .2, 1), box-shadow .12s; }
+  .btn:active:not(:disabled), .tile:active:not(.soon) { transform: scale(.97); }
+  .seg button { transition: background-color .2s, color .2s; }
+
+  /* Changement d'écran : glissement léger (API View Transitions) */
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .28s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+  html[data-sens="avant"]::view-transition-old(root) { animation-name: vt-sortie-gauche; }
+  html[data-sens="avant"]::view-transition-new(root) { animation-name: vt-entree-droite; }
+  html[data-sens="arriere"]::view-transition-old(root) { animation-name: vt-sortie-droite; }
+  html[data-sens="arriere"]::view-transition-new(root) { animation-name: vt-entree-gauche; }
+  @keyframes vt-sortie-gauche { to { opacity: 0; transform: translateX(-30px); } }
+  @keyframes vt-entree-droite { from { opacity: 0; transform: translateX(30px); } }
+  @keyframes vt-sortie-droite { to { opacity: 0; transform: translateX(30px); } }
+  @keyframes vt-entree-gauche { from { opacity: 0; transform: translateX(-30px); } }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+}
