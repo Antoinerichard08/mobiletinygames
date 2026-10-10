@@ -1,0 +1,30 @@
+/* Solitaire */
+.table { container-type: inline-size; background: var(--felt); border-radius: 20px; padding: 10px 8px 18px; border: 3px solid var(--felt-deep); }
+.deck {
+  --gap: 5px; --cw: calc((100cqw - 6 * var(--gap)) / 7); --ch: calc(var(--cw) * 1.4);
+  display: flex; flex-direction: column; gap: calc(var(--cw) * .35);
+}
+.row7 { display: grid; grid-template-columns: repeat(7, var(--cw)); gap: var(--gap); align-items: start; }
+.slot {
+  position: relative; width: var(--cw); height: var(--ch); border: 2px dashed var(--felt-line); border-radius: calc(var(--cw) * .14);
+  display: grid; place-items: center; color: var(--felt-line); font-size: calc(var(--cw) * .42); font-weight: 700; cursor: pointer;
+}
+.slot.plain { border-color: transparent; }
+.col { position: relative; width: var(--cw); cursor: pointer; }
+.card {
+  position: absolute; left: 0; width: var(--cw); height: var(--ch); border-radius: calc(var(--cw) * .14);
+  background: var(--card-bg); color: var(--card-ink); box-shadow: 0 1px 3px rgba(0, 0, 0, .4); overflow: hidden;
+  font-size: calc(var(--cw) * .38);
+}
+.slot .card { top: -2px; left: -2px; }
+.card.red { color: var(--card-red); }
+.card.back { background: repeating-linear-gradient(45deg, var(--back-a) 0 6px, var(--back-b) 6px 12px); border: calc(var(--cw) * .07) solid var(--card-bg); }
+.card .idx { position: absolute; top: calc(var(--cw) * .04); left: calc(var(--cw) * .07); display: flex; align-items: center; gap: 1px; line-height: 1; }
+.card .idx b { font-weight: 700; }
+.card .big { position: absolute; right: calc(var(--cw) * .08); bottom: calc(var(--cw) * .04); font-size: calc(var(--cw) * .62); line-height: 1; }
+.card.sel { outline: 3px solid var(--gold); outline-offset: -1px; z-index: 5; }
+.card.hint, .slot.hint { outline: 4px dashed var(--gold); outline-offset: -2px; z-index: 6; }
+.cnt {
+  position: absolute; right: 3px; bottom: 3px; z-index: 3; background: rgba(0, 0, 0, .65); color: #fff;
+  border-radius: 10px; padding: 0 6px; font-size: calc(var(--cw) * .3); font-weight: 700; line-height: 1.4;
+}

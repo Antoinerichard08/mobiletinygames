@@ -8,6 +8,7 @@
 //   bientot   → true pour afficher une tuile « Bientôt disponible » non cliquable.
 
 import sudoku from './games/sudoku/index.js';
+import solitaire from './games/solitaire/index.js';
 import backgammon from './games/backgammon/index.js';
 
-export const JEUX = [sudoku, backgammon];
+export const JEUX = [sudoku, solitaire, backgammon];
