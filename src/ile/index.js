@@ -13,9 +13,9 @@ import { T, S, tuile, sprite, ilot } from '../core/tuiles.js';
 import { modeDev } from '../core/config.js';
 import { JEUX } from '../registre.js';
 import {
-  ILES, BATIMENTS, DECORS, AMENAGEMENTS, ORDRE_BATIMENTS, ORDRE_DECORS, RESSOURCES, NOMS_RESSOURCES, NOMS_DIRECTIONS,
+  ILES, BATIMENTS, DECORS, AMENAGEMENTS, ORDRE_BATIMENTS, ORDRE_DECORS, RESSOURCES, NOMS_RESSOURCES,
   MINUTE, migrer, cle, coord, estTerre, estCote, terrainDe, construire, ameliorer, decorer, retirer, produit, stock,
-  plafond, periode, ramasser, toutRamasser, peutAmenager, amenager, agrandir, coutAgrandir, actualiser, beauteTotale,
+  plafond, periode, ramasser, toutRamasser, peutAmenager, amenager, acheterCase, coutCase, casesAchetables, peutAcheter, actualiser, beauteTotale,
   ilesOuvertes, estDebloque, apercu, habitants, peutPayer, manque, niveauMax, pointsCase, ouvrirTout, batisseurs,
   batisseursLibres, chantiers, prixBatisseur, engagerBatisseur, prixFinir, finir, peutDeplacer, apercuDeplacement,
   deplacer, ramasserTresor, paliers, progressionIle, dureeChantier, voisinsDe,
@@ -24,6 +24,7 @@ import { conseil } from './conseil.js';
 import { camera, versEcran, versMonde, borner, zoomAutour, zoomPourVoir, centrePourVoir, entre } from './camera.js';
 import { origine, rectIle, rectMonde, caseSous, ileProche, centreCase } from './plan.js';
 import { creerRendu, imageCase, imageType } from './monde.js';
+import { creerCotes, masqueCote } from './cote.js';
 import { creerVie } from './vie.js';
 import { suivreGestes } from './gestes.js';
 import { ICONE } from './icones.js';
@@ -194,6 +195,7 @@ function etatDessin() {
     selection: ui.mode === 'libre' && sel ? sel : null,
     propositions, fantome, deplacement,
     agrandir: ui.mode === 'agrandir' ? ui.agrandir : null,
+    agrandirChoix: ui.mode === 'agrandir' ? ui.agrandirChoix : null,
     guide: ui.guide?.cible?.genre === 'case' ? ui.guide.cible : null,
   };
 }
@@ -242,8 +244,10 @@ function placerEtiquettes() {
     etiquette.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y - 12)}px) translate(-50%, -100%)`;
   }
   const valider = $('#ile-valider', scene);
-  if ((ui.mode === 'poser' || ui.mode === 'deplacer') && ui.pose) {
-    const [x, y] = coord(ui.pose.cle), c = centreCase(E.iles[ui.pose.n], ui.pose.n, x, y);
+  const suivie = (ui.mode === 'poser' || ui.mode === 'deplacer') && ui.pose ? { n: ui.pose.n, cle: ui.pose.cle }
+    : ui.mode === 'agrandir' && ui.agrandirChoix ? { n: ui.agrandir, cle: ui.agrandirChoix } : null;
+  if (suivie) {
+    const [x, y] = coord(suivie.cle), c = centreCase(E.iles[suivie.n], suivie.n, x, y);
     const p = versEcran(cam, c.x, c.y);
     const l = valider.offsetWidth || 140, h = valider.offsetHeight || 64;
     let px = p.x + cam.z * 0.55 + 10, py = p.y - h / 2;
@@ -519,11 +523,10 @@ async function toucher(p) {
   ui.inertie = null;
   const cible = cibleSous(p);
   if (cible?.genre === 'tresor') return ouvrirBouteille();
-  if (cible?.genre === 'panneau' && ui.mode === 'agrandir') return agrandirVers(cible.n, cible.dir);
   const w = versMonde(cam, p.x, p.y);
   const sous = cible?.genre === 'bulle' ? { n: cible.n, cle: cible.cle } : caseSous(E, ouvertes(), w.x, w.y);
   if (ui.mode === 'poser' || ui.mode === 'deplacer') return toucherEnPose(sous);
-  if (ui.mode === 'agrandir') { if (!sous || sous.n !== ui.agrandir) finirAgrandir(); return; }
+  if (ui.mode === 'agrandir') return toucherEnAgrandissant(sous);
   if (!sous) {
     // une île encore dans les nuages ?
     for (let n = ouvertes(); n < E.iles.length; n++) {
@@ -719,7 +722,7 @@ function sortirModePose(dejaRetire = false) {
   $('#ile-valider', scene).hidden = true;
 }
 function majValider() {
-  const ok = ui.pose && ui.pose.gains.has(ui.pose.cle);
+  const ok = ui.mode === 'agrandir' ? Boolean(ui.agrandirChoix) : ui.pose && ui.pose.gains.has(ui.pose.cle);
   $('#ile-ok', scene).disabled = !ok;
 }
 
@@ -821,19 +824,26 @@ async function confirmerPose() {
   await annoncerDeblocages(avant);
 }
 
-// ---------- Agrandir l'île ----------
+// ---------- Agrandir l'île, case par case ----------
 
+function bandeauAgrandir() {
+  const ile = E.iles[ui.agrandir];
+  $('#ile-bandeau', scene).innerHTML = casesAchetables(ile).length
+    ? `<b>Agrandir l’île</b><span>touchez une case marquée <b class="plus">+</b></span><span class="bandeau-prix">la case : ${coutHtml(coutCase(ile), 18)}</span>`
+    : '<b>Agrandir l’île</b><span>elle est déjà au plus grand</span>';
+}
 function commencerAgrandir() {
   fermerGuide();
   ui.mode = 'agrandir';
   ui.agrandir = E.active;
+  ui.agrandirChoix = null;
   ui.selection = null;
   majActions();
   scene.classList.add('en-pose');
-  $('#ile-bandeau', scene).innerHTML = '<b>Agrandir l’île</b><span>touchez un panneau</span>';
+  bandeauAgrandir();
   $('#ile-bandeau', scene).hidden = false;
   $('#ile-terminer', scene).hidden = false;
-  volerVers(cameraPourIle(E.active, 2.4, CADRE_AGRANDIR));
+  volerVers(cameraPourIle(E.active, 1.4, CADRE_AGRANDIR));
   ouvrirCouche();
 }
 function finirAgrandir(dejaRetire = false) {
@@ -841,33 +851,56 @@ function finirAgrandir(dejaRetire = false) {
   if (!dejaRetire) fermerCouche();
   ui.mode = 'libre';
   ui.agrandir = null;
+  ui.agrandirChoix = null;
   scene.classList.remove('en-pose');
   $('#ile-bandeau', scene).hidden = true;
   $('#ile-terminer', scene).hidden = true;
+  $('#ile-valider', scene).hidden = true;
 }
-async function agrandirVers(n, dir) {
-  const ile = E.iles[n], cout = coutAgrandir(ile, dir);
-  if (!peutPayer(E, solde(), cout)) return dire(`Il manque ${texteManque(manque(E, solde(), cout))}. Cassez des rochers ou construisez une carrière pour la pierre.`);
-  const ok = await fenetre({
-    titre: 'Agrandir l’île',
-    corps: `<p>Une nouvelle rangée de terre va sortir de l’eau ${NOMS_DIRECTIONS[dir]}.</p><p class="prix-ligne">${coutHtml(cout, 26)}</p>`,
-    boutons: [{ id: 'non', texte: 'Non' }, { id: 'oui', texte: 'Agrandir', classe: 'vert' }],
-  });
-  if (ok !== 'oui') return;
+/** Une case à vendre : on la choisit (elle s'éclaire, avec son prix), puis on confirme avec ✓ ou en la touchant encore. */
+function toucherEnAgrandissant(sous) {
+  if (sous && sous.n !== ui.agrandir && sous.n < ouvertes()) {
+    ui.agrandir = sous.n;
+    ui.agrandirChoix = null;
+    E.active = sous.n;
+    majRuban();
+    bandeauAgrandir();
+    $('#ile-valider', scene).hidden = true;
+  }
+  if (!sous || !peutAcheter(E.iles[sous.n], ...coord(sous.cle))) {
+    ui.agrandirChoix = null;
+    $('#ile-valider', scene).hidden = true;
+    return dire('Touchez une case d’eau marquée d’un +, au bord de l’île.', 2500);
+  }
+  if (ui.agrandirChoix === sous.cle) return acheter();
+  ui.agrandirChoix = sous.cle;
+  vibrer(6);
+  $('#ile-valider', scene).hidden = false;
+  majValider();
+}
+async function acheter() {
+  const n = ui.agrandir, k = ui.agrandirChoix;
+  if (n === null || !k) return;
+  const ile = E.iles[n], [x, y] = coord(k), cout = coutCase(ile);
   const avant = deblocages();
-  const r = agrandir(E, n, dir, solde(), payerEtoiles);
-  if (!r.ok) return dire('Ce n’est pas possible pour l’instant.');
+  const r = acheterCase(E, n, x, y, solde(), payerEtoiles);
+  if (!r.ok) {
+    return dire(r.manque
+      ? `Il manque ${texteManque(r.manque)}. ${r.manque.etoiles ? 'Jouez une partie pour gagner des étoiles.' : 'Cassez des rochers ou ramassez des cailloux pour la pierre.'}`
+      : 'Cette case ne peut pas être achetée.');
+  }
   sauver();
-  vibrer(30);
-  r.cases.forEach(([x, y], i) => {
-    rendu.pop(n, cle(x, y), 'terre', temps, reduit() ? 0 : i * 0.08);
-    const c = centreCase(ile, n, x, y);
-    setTimeout(() => rendu.gerbe(c.x, c.y, 'eau', temps), reduit() ? 0 : i * 80);
-  });
+  vibrer(25);
+  ui.agrandirChoix = null;
+  $('#ile-valider', scene).hidden = true;
+  rendu.pop(n, k, 'terre', temps);
+  const c = centreCase(ile, n, x, y);
+  rendu.gerbe(c.x, c.y, 'eau', temps);
+  rendu.texte(c.x, c.y - 0.6, `−${cout.etoiles}★ −${cout.pierre} pierre`, temps);
   vie.peupler(E);
   majHud();
-  dire('L’île est plus grande !');
-  volerVers(cameraPourIle(n, 2.4, CADRE_AGRANDIR));
+  bandeauAgrandir();
+  dire('Une case de plus : l’île grandit !', 2500);
   await annoncerDeblocages(avant);
 }
 
@@ -973,7 +1006,7 @@ function fenetreInfo(n, k) {
   const aime = Object.entries(def.aime || {});
   const voisins = voisinsDe(x, y).map(([vx, vy]) => { const v = ile.cases[cle(vx, vy)]; return v && v.niveau > 0 ? v.type : terrainDe(ile, vx, vy); });
   const nomAime = (k2) => (BATIMENTS[k2] || DECORS[k2])?.nom || { foret: 'Forêt', montagne: 'Rochers', etang: 'Étang', herbe: 'Herbe' }[k2] || k2;
-  const imgAime = (k2) => (BATIMENTS[k2] || DECORS[k2] ? imageHtml(imageType(k2), 36) : imageHtml(imageCase({ cases: {}, travaux: {}, terrain: { '0,0': k2 }, ext: { x0: 0, y0: 0, x1: 0, y1: 0 } }, 0, 0, t), 36));
+  const imgAime = (k2) => (BATIMENTS[k2] || DECORS[k2] ? imageHtml(imageType(k2), 36) : imageHtml(imageCase({ cases: {}, travaux: {}, terre: { '0,0': 1 }, terrain: { '0,0': k2 }, ext: { x0: 0, y0: 0, x1: 0, y1: 0 } }, 0, 0, t), 36));
   fenetre({
     titre: def.nom,
     large: 'moyen',
@@ -1091,7 +1124,7 @@ async function ouvrirBoutique(cible = null) {
     } else {
       const ile = E.iles[E.active], prix = prixBatisseur(E);
       cartes += `<button class="carte" data-special="agrandir"><span class="carte-image grand-ic">${ICONE.agrandir}</span><span class="carte-nom">Agrandir l’île</span>
-        <span class="carte-desc">Une rangée de terre sort de l’eau, du côté que vous choisissez.</span><span class="carte-prix">${coutHtml(coutAgrandir(ile, 'est'), 20)}<small>environ</small></span></button>`;
+        <span class="carte-desc">Choisissez les cases d’eau qui deviennent de la terre, une à une.</span><span class="carte-prix">${coutHtml(coutCase(ile), 20)}<small>la case</small></span></button>`;
       cartes += `<button class="carte" data-special="batisseurs"><span class="carte-image">${sprite(S.habitant(3, 3), 84)}</span><span class="carte-nom">Bâtisseurs</span>
         <span class="carte-desc">${batisseurs(E)} au travail. Chacun mène un chantier à la fois.</span><span class="carte-prix">${prix !== null ? coutHtml({ etoiles: prix }, 20) : '<b>Au complet</b>'}</span></button>`;
       cartes += `<button class="carte" data-special="progression"><span class="carte-image grand-ic or">${ICONE.etoile}</span><span class="carte-nom">Ce qui vous attend</span>
@@ -1307,8 +1340,12 @@ function brancher() {
   sur('ile-conseil', () => (ui.guide ? fermerGuide() : donnerConseil()));
   sur('ile-ramasser', toutRecolter);
   sur('ile-construire', () => { fermerGuide(); deselectionner(); ouvrirBoutique(); });
-  sur('ile-ok', confirmerPose);
-  sur('ile-annuler', () => { sortirModePose(); dire(''); });
+  sur('ile-ok', () => (ui.mode === 'agrandir' ? acheter() : confirmerPose()));
+  sur('ile-annuler', () => {
+    if (ui.mode === 'agrandir') { ui.agrandirChoix = null; $('#ile-valider', scene).hidden = true; return; }
+    sortirModePose();
+    dire('');
+  });
   sur('ile-terminer', finirAgrandir);
   sur('ile-prec', () => changerIle(-1));
   sur('ile-nom', () => { deselectionner(); volerVers(cameraPourIle(E.active), 700); }); // perdu ? on revient sur l'île
@@ -1407,9 +1444,16 @@ export function apercuIle() {
     feuilles.t.src = new URL('../../assets/ile/tuiles.png', import.meta.url).href;
     feuilles.s.src = new URL('../../assets/ile/sprites.png', import.meta.url).href;
     Promise.all(Object.values(feuilles).map((im) => im.decode().catch(() => {}))).then(() => {
+      const cotes = creerCotes(feuilles.t);
       for (let y = y0 - 1; y <= y1 + 1; y++) for (let x = x0 - 1; x <= x1 + 1; x++) {
-        const img = imageCase(ile, x, y, t);
-        g.drawImage(feuilles[img.f], img.c[0] * 16, img.c[1] * 16, 16, 16, (x - x0 + 1) * 16, (y - y0 + 1) * 16, 16, 16);
+        const img = imageCase(ile, x, y, t), px = (x - x0 + 1) * 16, py = (y - y0 + 1) * 16;
+        if (!estTerre(ile, x, y)) {
+          // la mer et sa côte ; un port éventuel par-dessus
+          const cote = cotes(masqueCote((dx, dy) => estTerre(ile, x + dx, y + dy)));
+          if (cote) g.drawImage(cote, px, py); else g.drawImage(feuilles.t, T.eau[0] * 16, T.eau[1] * 16, 16, 16, px, py, 16, 16);
+          if (img.eau) continue;
+        }
+        g.drawImage(feuilles[img.f], img.c[0] * 16, img.c[1] * 16, 16, 16, px, py, 16, 16);
       }
     });
   }
@@ -1430,7 +1474,7 @@ export default {
     charger();
     actualiser(E, maintenant());
     E.active = Math.min(E.active || 0, ouvertes() - 1);
-    ui = { mode: 'libre', selection: null, pose: null, agrandir: null, guide: null, vol: null, inertie: null, fenetre: false };
+    ui = { mode: 'libre', selection: null, pose: null, agrandir: null, agrandirChoix: null, guide: null, vol: null, inertie: null, fenetre: false };
     dernieresRessources = null;
     signatureActions = '';
     construireScene();
@@ -1450,7 +1494,7 @@ export default {
     horloge = setInterval(tic, 1000);
     accueillir();
     // pour tester (mode développeur) : l'état et les actions de l'écran
-    if (modeDev()) window.ileDebug = { cam: () => cam, E: () => E, ui: () => ui, finirVol: () => { if (ui.vol) { cam = ui.vol.vers; ui.vol = null; } }, cameraPourIle, CADRE_AGRANDIR, ouvrirBoutique, commencerPose, confirmerPose, commencerAgrandir, agrandirVers, choisir, action, toucher, donnerConseil, fenetreProgression, fenetreBatisseurs, fenetreJouer, versEcran: (x, y) => versEcran(cam, x, y), centreCase: (n, x, y) => centreCase(E.iles[n], n, x, y) };
+    if (modeDev()) window.ileDebug = { cam: () => cam, E: () => E, ui: () => ui, finirVol: () => { if (ui.vol) { cam = ui.vol.vers; ui.vol = null; } }, cameraPourIle, CADRE_AGRANDIR, ouvrirBoutique, commencerPose, confirmerPose, commencerAgrandir, toucherEnAgrandissant, acheter, choisir, action, toucher, donnerConseil, fenetreProgression, fenetreBatisseurs, fenetreJouer, versEcran: (x, y) => versEcran(cam, x, y), centreCase: (n, x, y) => centreCase(E.iles[n], n, x, y) };
   },
 
   demonter() {

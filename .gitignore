@@ -8,3 +8,7 @@ node_modules/
 *.keystore
 .claude/
 *.zip
+
+# images de travail déposées à la racine (copiées dans design/)
+/app icone*.png
+/app logo*.png

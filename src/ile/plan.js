@@ -11,10 +11,14 @@ export const COULOIRS = [
   { de: [11.2, -12], vers: [11.2, 28] },
 ];
 
-/** Décalage à ajouter aux coordonnées d'une île pour obtenir celles du monde. */
+/**
+ * Décalage à ajouter aux coordonnées d'une île pour obtenir celles du monde. Il dépend du centre de départ de
+ * l'île (qui ne bouge jamais) : quand on achète une case, le reste de l'île reste à sa place.
+ */
 export function origine(ile, n) {
   const [cx, cy] = EMPLACEMENTS[n];
-  return { ox: Math.round(cx - (ile.ext.x0 + ile.ext.x1 + 1) / 2), oy: Math.round(cy - (ile.ext.y0 + ile.ext.y1 + 1) / 2) };
+  const c = ile.centre || { x: (ile.ext.x0 + ile.ext.x1) / 2, y: (ile.ext.y0 + ile.ext.y1) / 2 };
+  return { ox: Math.round(cx - c.x - 0.5), oy: Math.round(cy - c.y - 0.5) };
 }
 
 /** Rectangle d'une île dans le monde, côte comprise : { x0, y0, x1, y1 } (x1, y1 exclus). */
@@ -62,16 +66,4 @@ export function ileProche(e, ouvertes, wx, wy) {
 export function centreCase(ile, n, x, y) {
   const { ox, oy } = origine(ile, n);
   return { x: ox + x + 0.5, y: oy + y + 0.5 };
-}
-
-/** Où planter les panneaux « Agrandir » : au milieu de chaque côté, sur la mer (coordonnées du monde). */
-export function panneauxAgrandir(ile, n) {
-  const { ox, oy } = origine(ile, n), { x0, y0, x1, y1 } = ile.ext;
-  const mx = ox + (x0 + x1 + 1) / 2, my = oy + (y0 + y1 + 1) / 2;
-  return [
-    { dir: 'nord', x: mx, y: oy + y0 - 1.6 },
-    { dir: 'sud', x: mx, y: oy + y1 + 2.6 },
-    { dir: 'ouest', x: ox + x0 - 1.6, y: my },
-    { dir: 'est', x: ox + x1 + 2.6, y: my },
-  ];
 }

@@ -11,8 +11,8 @@ import { deflateSync, inflateSync } from 'node:zlib';
 
 const racine = fileURLToPath(new URL('..', import.meta.url));
 const SOURCE = join(racine, 'design/logo-source.png');
-// Le carré arrondi du logo dans l'image source, et l'arrondi de ses coins (mesurés une fois pour toutes)
-const CADRE = { x: 41, y: 35, cote: 1172, rayon: 0.24 };
+// Le logo occupe toute l'image source (illustration pleine) ; on arrondit seulement les coins de l'icône
+const CADRE = { x: 0, y: 0, cote: 1254, rayon: 0.2 };
 const CREME = [253, 247, 222];
 const CREME_HEX = '#FDF7DE';
 

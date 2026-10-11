@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
   ILES, BATIMENTS, DECORS, MINUTE, PLAFOND_PAR_NIVEAU, etatVide, migrer, cle, coord, estTerre, estCote, terrainDe,
   peutPoser, construire, ameliorer, accelerer, prixAcceleration, actualiser, decorer, retirer, produit, stock,
-  ramasser, toutRamasser, amenager, peutAmenager, agrandir, coutAgrandir, obstacleAgrandir, beauteIle, beauteTotale,
+  ramasser, toutRamasser, amenager, peutAmenager, acheterCase, coutCase, casesAchetables, peutAcheter, nbTerres, beauteIle, beauteTotale,
+  PORTEE_MAX, formeOrganique,
   ilesOuvertes, estDebloque, apercu, habitants, manque, pointsCase, voisinsDe,
 } from '../src/ile/regles.js';
 
@@ -24,16 +25,51 @@ function caseHerbe(e, condition = () => true) {
 }
 const pres = (e, terrain) => (x, y) => voisinsDe(x, y).some(([vx, vy]) => terrainDe(e.iles[0], vx, vy) === terrain);
 
-test('île de départ : terre au milieu, eau autour, quelques bois et rochers', () => {
+/** Une case d'eau qui touche la terre par un côté. */
+function caseCote(ile) {
+  for (let y = ile.ext.y0 - 1; y <= ile.ext.y1 + 1; y++) for (let x = ile.ext.x0 - 1; x <= ile.ext.x1 + 1; x++) if (estCote(ile, x, y)) return [x, y];
+  return null;
+}
+
+test('île de départ : une forme naturelle, d’un seul tenant, avec bois et rochers', () => {
   const e = etatVide();
+  e.iles.forEach((ile, n) => {
+    assert.equal(nbTerres(ile), ILES[n].surface, `île ${n} : sa surface`);
+    // d'un seul tenant : depuis une case, on atteint toutes les autres
+    const cles = Object.keys(ile.terre), vus = new Set([cles[0]]), file = [coord(cles[0])];
+    while (file.length) for (const [x, y] of voisinsDe(...file.shift())) if (estTerre(ile, x, y) && !vus.has(cle(x, y))) { vus.add(cle(x, y)); file.push([x, y]); }
+    assert.equal(vus.size, cles.length, `île ${n} d'un seul tenant`);
+    // pas un rectangle plein
+    const { x0, y0, x1, y1 } = ile.ext;
+    assert.ok((x1 - x0 + 1) * (y1 - y0 + 1) > cles.length, `île ${n} de forme libre`);
+  });
   const ile = e.iles[0];
-  assert.equal(ile.ext.x1 - ile.ext.x0 + 1, ILES[0].l);
   assert.ok(Object.values(ile.terrain).includes('foret'));
   assert.ok(Object.values(ile.terrain).includes('montagne'));
   assert.equal(estTerre(ile, 0, 0), false);
-  assert.equal(estCote(ile, 0, 1), true);
-  assert.equal(estCote(ile, 0, 0), false, 'coin');
-  assert.deepEqual(etatVide().iles[0].terrain, ile.terrain, 'toujours la même île');
+  const [cx, cy] = caseCote(ile);
+  assert.equal(estTerre(ile, cx, cy), false);
+  assert.deepEqual(etatVide().iles[0].terre, ile.terre, 'toujours la même île');
+});
+
+test('forme organique : pas de lac fermé au milieu', () => {
+  let graine = 7;
+  const alea = () => { graine = (graine * 16807) % 2147483647; return graine / 2147483647; };
+  for (let essai = 0; essai < 30; essai++) {
+    const terre = new Set(formeOrganique(7, 6, 26, alea));
+    for (let y = 1; y <= 6; y++) for (let x = 1; x <= 7; x++) {
+      if (terre.has(cle(x, y))) continue;
+      // chaque case d'eau du rectangle rejoint la mer du bord
+      const vus = new Set([cle(x, y)]), file = [[x, y]];
+      let mer = false;
+      while (file.length && !mer) {
+        const [a, b] = file.shift();
+        if (a < 1 || b < 1 || a > 7 || b > 6) { mer = true; break; }
+        for (const [c, d] of voisinsDe(a, b)) if (!terre.has(cle(c, d)) && !vus.has(cle(c, d))) { vus.add(cle(c, d)); file.push([c, d]); }
+      }
+      assert.ok(mer, 'aucune eau prisonnière');
+    }
+  }
 });
 
 test('construire : on paie, un chantier démarre, puis le bâtiment est fini', () => {
@@ -171,28 +207,40 @@ test('retirer rend ce qui a été payé', () => {
   assert.equal(e.iles[0].cases[cle(x, y)], undefined);
 });
 
-test('agrandir l’île : une rangée de terre en plus, payée en étoiles et en pierre', () => {
+test('agrandir l’île case par case : une case d’eau au bord devient de l’herbe', () => {
   const e = etatVide();
   const ile = e.iles[0];
   const payer = bourse(20);
-  const cout = coutAgrandir(ile, 'sud');
-  assert.deepEqual(cout, { etoiles: 4, pierre: 2 * ILES[0].l });
-  assert.equal(agrandir(e, 0, 'sud', 20, payer).raison, 'cout');
+  const [x, y] = caseCote(ile);
+  assert.equal(peutAcheter(ile, x, y), true);
+  assert.equal(peutAcheter(ile, ile.ext.x0 - 3, ile.ext.y0 - 3), false, 'pas au large');
+  const cout = coutCase(ile);
+  assert.deepEqual(cout, { etoiles: 1 + Math.floor(ILES[0].surface / 12), pierre: 2 + Math.floor(ILES[0].surface / 8) });
+  assert.equal(acheterCase(e, 0, x, y, 20, payer).raison, 'cout', 'il faut de la pierre');
   e.ressources.pierre = 50;
-  const h = ile.ext.y1;
-  assert.equal(agrandir(e, 0, 'sud', 20, payer).ok, true);
-  assert.equal(ile.ext.y1, h + 1);
-  assert.equal(terrainDe(ile, ile.ext.x0, ile.ext.y1), 'herbe');
-  while (agrandir(e, 0, 'nord', 20, () => true).ok);
-  assert.equal(obstacleAgrandir(ile, 'nord'), 'max');
+  assert.equal(acheterCase(e, 0, x, y, 20, payer).ok, true);
+  assert.equal(terrainDe(ile, x, y), 'herbe');
+  assert.equal(nbTerres(ile), ILES[0].surface + 1);
+  assert.equal(payer.reste(), 20 - cout.etoiles);
+  assert.equal(e.ressources.pierre, 50 - cout.pierre);
+  assert.equal(peutAcheter(ile, x, y), false, 'déjà de la terre');
 });
 
-test('on ne peut pas agrandir par-dessus un port', () => {
+test('l’île grandit jusqu’à 10 × 8 cases au plus, et jamais par-dessus un port', () => {
   const e = etatVide();
   const ile = e.iles[0];
-  e.ressources.bois = 100;
-  e.iles[0].cases[cle(ile.ext.x0, ile.ext.y1 + 1)] = { type: 'port', niveau: 1, chantier: null };
-  assert.equal(obstacleAgrandir(ile, 'sud'), 'port');
+  const [px, py] = caseCote(ile);
+  ile.cases[cle(px, py)] = { type: 'port', niveau: 1, chantier: null };
+  assert.equal(peutAcheter(ile, px, py), false, 'le port reste sur l’eau');
+  e.ressources.pierre = 1e6;
+  for (let tour = 0; tour < 200 && casesAchetables(ile).length; tour++) {
+    const [x, y] = coord(casesAchetables(ile)[0]);
+    assert.equal(acheterCase(e, 0, x, y, 1e6, () => true).ok, true);
+  }
+  assert.ok(ile.ext.x1 - ile.ext.x0 + 1 <= PORTEE_MAX.x * 2 + 1);
+  assert.ok(ile.ext.y1 - ile.ext.y0 + 1 <= PORTEE_MAX.y * 2 + 1);
+  assert.ok(nbTerres(ile) > 60, 'on peut beaucoup agrandir');
+  assert.equal(ile.cases[cle(px, py)].type, 'port');
 });
 
 test('habitants : selon les maisons terminées', () => {
@@ -218,21 +266,42 @@ test('les îles suivantes s’ouvrent avec la beauté', () => {
 });
 
 test('migration : une sauvegarde de la première version est reprise telle quelle', () => {
-  const L = ILES[0].l + 2;
+  const L = 5 + 2; // la grille de la version 1 : la première île faisait 5 cases de large
   const ancien = { iles: [{ cases: { [L + 2]: { type: 'maison', niveau: 2 }, [1]: { type: 'port', niveau: 1 } } }, { cases: {} }, { cases: {} }, { cases: {} }], active: 0 };
   const e = migrer(ancien, T0);
-  assert.equal(e.version, 2);
+  assert.equal(e.version, 3);
   assert.deepEqual(e.iles[0].cases[cle(2, 1)].niveau, 2);
   assert.equal(e.iles[0].cases[cle(1, 0)].type, 'port');
   assert.equal(estCote(e.iles[0], 1, 0), true);
-  assert.equal(migrer(e, T0), e, 'une sauvegarde déjà en version 2 ne change pas');
+  assert.equal(migrer(e, T0), e, 'une sauvegarde déjà en version 3 ne change pas');
+});
+
+test('migration : une île rectangulaire déjà construite est gardée, une île vierge prend la forme naturelle', () => {
+  const ext = { x0: 1, y0: 1, x1: 5, y1: 4 };
+  const ancien = {
+    version: 2, active: 0, ressources: { bois: 3, pierre: 0, ble: 0 },
+    iles: [
+      { ext, terrain: { '1,1': 'foret' }, cases: { '2,2': { type: 'maison', niveau: 1, chantier: null, depuis: T0 } }, travaux: {} },
+      { ext: { x0: 1, y0: 1, x1: 6, y1: 4 }, terrain: {}, cases: {}, travaux: {} },
+      { ext: { x0: 1, y0: 1, x1: 6, y1: 5 }, terrain: {}, cases: {}, travaux: {} },
+      { ext: { x0: 1, y0: 1, x1: 7, y1: 5 }, terrain: {}, cases: {}, travaux: {} },
+    ],
+  };
+  const e = migrer(ancien, T0);
+  assert.equal(e.version, 3);
+  assert.equal(nbTerres(e.iles[0]), 20, 'les 20 cases du rectangle');
+  assert.equal(e.iles[0].cases['2,2'].type, 'maison');
+  assert.equal(e.iles[0].terrain['1,1'], 'foret');
+  assert.equal(e.ressources.bois, 3);
+  assert.equal(nbTerres(e.iles[1]), ILES[1].surface, 'île vierge : nouvelle forme');
 });
 
 test('les ports se posent sur l’eau du bord, le reste sur l’herbe', () => {
   const e = etatVide();
   const ile = e.iles[0];
-  assert.equal(peutPoser(ile, 1, 0, 'port'), true);
-  assert.equal(peutPoser(ile, 1, 0, 'maison'), false);
+  const [cx, cy] = caseCote(ile);
+  assert.equal(peutPoser(ile, cx, cy, 'port'), true);
+  assert.equal(peutPoser(ile, cx, cy, 'maison'), false);
   const [x, y] = caseHerbe(e);
   assert.equal(peutPoser(ile, x, y, 'port'), false);
 });

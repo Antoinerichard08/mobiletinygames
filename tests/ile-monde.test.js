@@ -5,10 +5,11 @@ import {
   BATIMENTS, MINUTE, INTERVALLE_TRESOR, etatVide, cle, coord, terrainDe, estCote, construire, actualiser, decorer,
   batisseurs, batisseursLibres, chantiers, prixBatisseur, engagerBatisseur, prixFinir, finir, amenager,
   peutDeplacer, apercuDeplacement, deplacer, ramasserTresor, paliers, niveauIle, progressionIle, beauteIle, voisinsDe,
+  estTerre, majExt, PORTEE_MAX,
 } from '../src/ile/regles.js';
 import { conseil, meilleureCase } from '../src/ile/conseil.js';
 import { camera, versEcran, versMonde, borner, zoomAutour, zoomPourVoir, entre } from '../src/ile/camera.js';
-import { EMPLACEMENTS, origine, rectIle, rectMonde, caseSous, ileProche, panneauxAgrandir } from '../src/ile/plan.js';
+import { EMPLACEMENTS, origine, rectIle, rectMonde, caseSous, ileProche } from '../src/ile/plan.js';
 
 const T0 = 1_800_000_000_000;
 const bourse = (n) => {
@@ -87,9 +88,11 @@ test('déplacer : le bâtiment garde son niveau et sa récolte, la beauté suit 
   assert.equal(ile.cases[cle(...a)], undefined);
   assert.deepEqual(ile.cases[cle(...b)], { type: 'maison', niveau: 2, chantier: null, depuis: T0 });
   // un port reste au bord de l'eau
-  ile.cases[cle(1, 0)] = { type: 'port', niveau: 1, chantier: null };
-  assert.equal(peutDeplacer(ile, cle(1, 0), ...a), false);
-  assert.equal(peutDeplacer(ile, cle(1, 0), 2, 0), true);
+  const cotes = [];
+  for (let y = ile.ext.y0 - 1; y <= ile.ext.y1 + 1; y++) for (let x = ile.ext.x0 - 1; x <= ile.ext.x1 + 1; x++) if (estCote(ile, x, y)) cotes.push(cle(x, y));
+  ile.cases[cotes[0]] = { type: 'port', niveau: 1, chantier: null };
+  assert.equal(peutDeplacer(ile, cotes[0], ...a), false);
+  assert.equal(peutDeplacer(ile, cotes[0], ...coord(cotes[1])), true);
 });
 
 test('bouteille à la mer : elle s’échoue sur une plage, se ramasse, puis revient plus tard', () => {
@@ -196,7 +199,13 @@ test('caméra : écran ↔ monde, zoom autour du doigt, bornes', () => {
 
 test('plan : les îles ne se chevauchent pas, même agrandies au maximum', () => {
   const e = etatVide();
-  for (const ile of e.iles) ile.ext = { x0: 1, y0: 1, x1: 10, y1: 8 };
+  for (const ile of e.iles) {
+    // toute la place autour du centre de départ
+    for (let y = Math.ceil(ile.centre.y - PORTEE_MAX.y); y <= ile.centre.y + PORTEE_MAX.y; y++) {
+      for (let x = Math.ceil(ile.centre.x - PORTEE_MAX.x); x <= ile.centre.x + PORTEE_MAX.x; x++) ile.terre[cle(x, y)] = 1;
+    }
+    majExt(ile);
+  }
   const r = e.iles.map((ile, n) => rectIle(ile, n));
   for (let i = 0; i < r.length; i++) for (let j = i + 1; j < r.length; j++) {
     const separe = r[i].x1 <= r[j].x0 || r[j].x1 <= r[i].x0 || r[i].y1 <= r[j].y0 || r[j].y1 <= r[i].y0;
@@ -210,15 +219,18 @@ test('plan : les îles ne se chevauchent pas, même agrandies au maximum', () =>
 test('plan : la case sous le doigt, sur les îles découvertes seulement', () => {
   const e = etatVide();
   const ile = e.iles[0], { ox, oy } = origine(ile, 0);
-  const s = caseSous(e, 1, ox + 2.5, oy + 1.5);
-  assert.deepEqual([s.n, s.x, s.y, s.terre], [0, 2, 1, true]);
-  assert.equal(caseSous(e, 1, ox + 1.5, oy + 0.5).cote, true);
+  const [tx, ty] = coord(Object.keys(ile.terre)[0]);
+  const s = caseSous(e, 1, ox + tx + 0.5, oy + ty + 0.5);
+  assert.deepEqual([s.n, s.x, s.y, s.terre], [0, tx, ty, true]);
+  let cote = null;
+  for (let y = ile.ext.y0 - 1; y <= ile.ext.y1 + 1 && !cote; y++) for (let x = ile.ext.x0 - 1; x <= ile.ext.x1 + 1; x++) if (estCote(ile, x, y)) { cote = [x, y]; break; }
+  assert.equal(caseSous(e, 1, ox + cote[0] + 0.5, oy + cote[1] + 0.5).cote, true);
+  assert.equal(estTerre(ile, ...cote), false);
   assert.equal(caseSous(e, 1, ox - 10, oy - 10), null, 'pleine mer');
   const r1 = rectIle(e.iles[1], 1);
   assert.equal(caseSous(e, 1, r1.x0 + 2, r1.y0 + 2), null, 'île encore dans les nuages');
   assert.equal(caseSous(e, 2, r1.x0 + 2, r1.y0 + 2).n, 1);
   assert.equal(ileProche(e, 2, r1.x0 + 2, r1.y0 + 2), 1);
-  assert.equal(panneauxAgrandir(ile, 0).length, 4);
 });
 
 // ---------- La vie du village ----------

@@ -154,6 +154,9 @@ button.capsule { cursor: pointer; font: inherit; color: #fff; }
 .hud-bandeau[hidden] { display: none; }
 .hud-bandeau b { font-family: var(--font-display); font-size: 1.2rem; font-weight: 400; }
 .hud-bandeau span { font-size: .95rem; font-weight: 700; }
+.hud-bandeau .plus { display: inline-grid; place-items: center; width: 1.4em; height: 1.4em; border-radius: 50%; background: rgba(255, 255, 255, .2); font-family: var(--font-body); }
+.bandeau-prix { display: inline-flex; align-items: center; gap: 4px; }
+.hud-bandeau .prix { background: rgba(255, 255, 255, .94); color: #2a1a08; text-shadow: none; }
 .en-pose .hud-hc, .en-pose .hud-hg, .en-pose .hud-bg, .en-pose .hud-bd, .en-pose .hud-actions, .en-pose .hud-etiquette, .en-pose .hud-guide { display: none; }
 
 /* messages et guide */
@@ -164,7 +167,7 @@ button.capsule { cursor: pointer; font: inherit; color: #fff; }
 }
 .hud-toast small { font-size: .95rem; color: #ffe9a6; font-style: italic; }
 .hud-toast[hidden] { display: none; }
-.en-pose .hud-toast { top: 58px; }
+.en-pose .hud-toast { top: 112px; }
 .hud-guide {
   position: absolute; left: calc(var(--bord-g) + 172px); bottom: 8px; display: flex; align-items: flex-end; gap: 8px; max-width: min(440px, calc(100% - 172px - 176px - var(--bord-g) - var(--bord-d))); cursor: pointer;
 }

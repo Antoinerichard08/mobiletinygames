@@ -1,28 +1,32 @@
-// Mon île (version 2) : construction paisible façon « Islanders », avec ressources récoltées en temps réel.
+// Mon île (version 3) : construction paisible façon « Islanders », avec ressources récoltées en temps réel.
 // Sans dépendance au navigateur (testé avec Node). Toutes les fonctions reçoivent l'heure `t` (ms) :
 // rien ne dépend d'un minuteur, tout se calcule à partir des horodatages (donc aussi appli fermée).
 //
 // État :
 // {
-//   version: 2, active, ressources: { bois, pierre, ble },
-//   iles: [{ ext: {x0,y0,x1,y1}, terrain: {"x,y": 'herbe'|'foret'|'montagne'|'etang'|'pousse'},
+//   version: 3, active, ressources: { bois, pierre, ble },
+//   iles: [{ terre: {"x,y": 1}, centre: {x, y}, ext: {x0,y0,x1,y1} (le rectangle qui contient la terre),
+//            terrain: {"x,y": 'herbe'|'foret'|'montagne'|'etang'|'buisson'|'caillou'},
 //            cases: {"x,y": { type, niveau, chantier: {debut, fin, vers} | null, depuis }},
 //            travaux: {"x,y": { action, debut, fin }} }]
 // }
-// La terre est le rectangle ext ; la mer qui l'entoure (une case de large) accueille les ports.
+// La terre est un ensemble de cases, de forme libre ; elle s'agrandit case par case (on achète une case
+// d'eau collée à la terre). La mer qui la touche accueille les ports.
 import { aleaGraine } from '../core/outils.js';
 
 export const MINUTE = 60 * 1000;
 export const RESSOURCES = ['bois', 'pierre', 'ble'];
 export const NOMS_RESSOURCES = { bois: 'bois', pierre: 'pierre', ble: 'blé' };
 
+/** l × h : la place dont dispose l'île au départ ; surface : son nombre de cases de terre au départ. */
 export const ILES = [
-  { nom: 'L’Île du Matin', l: 5, h: 4, seuil: 0 },
-  { nom: 'L’Île aux Blés', l: 6, h: 4, seuil: 40 },
-  { nom: 'L’Île du Port', l: 6, h: 5, seuil: 100 },
-  { nom: 'La Grande Île', l: 7, h: 5, seuil: 180 },
+  { nom: 'L’Île du Matin', l: 6, h: 5, surface: 18, seuil: 0 },
+  { nom: 'L’Île aux Blés', l: 7, h: 5, surface: 22, seuil: 40 },
+  { nom: 'L’Île du Port', l: 7, h: 6, surface: 26, seuil: 100 },
+  { nom: 'La Grande Île', l: 8, h: 6, surface: 30, seuil: 180 },
 ];
-export const TAILLE_MAX = { l: 10, h: 8 };
+/** Jusqu'où l'île peut s'étendre autour de son centre de départ (en cases) : 10 × 8 au plus. */
+export const PORTEE_MAX = { x: 5, y: 4 };
 
 /**
  * Bâtiments. cout[n] : prix pour atteindre le niveau n + 1 ({ etoiles, bois, pierre, ble }).
@@ -115,8 +119,6 @@ export const PLAFOND_PAR_NIVEAU = 10; // stock maximal d'un bâtiment producteur
 export const BATISSEURS_DEPART = 2; // chantiers menés en même temps (les aménagements n'en demandent pas)
 export const PRIX_BATISSEURS = [15, 30]; // en étoiles : le 3e, puis le 4e bâtisseur
 export const INTERVALLE_TRESOR = 40 * MINUTE; // une bouteille s'échoue sur la plage de temps en temps
-export const COUT_AGRANDIR_CASE = { pierre: 2 }; // par nouvelle case de terre
-export const COUT_AGRANDIR_FIXE = { etoiles: 4 };
 
 // ---------- Outils de cases ----------
 
@@ -125,13 +127,18 @@ export const coord = (k) => k.split(',').map(Number);
 const VOISINS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 export const voisinsDe = (x, y) => VOISINS.map(([dx, dy]) => [x + dx, y + dy]);
 
-export const estTerre = (ile, x, y) => x >= ile.ext.x0 && x <= ile.ext.x1 && y >= ile.ext.y0 && y <= ile.ext.y1;
-/** Case d'eau collée à l'île (pas un coin) : on peut y construire un port. */
-export function estCote(ile, x, y) {
-  const { x0, y0, x1, y1 } = ile.ext;
-  if (estTerre(ile, x, y)) return false;
-  const dansX = x >= x0 && x <= x1, dansY = y >= y0 && y <= y1;
-  return (dansX && (y === y0 - 1 || y === y1 + 1)) || (dansY && (x === x0 - 1 || x === x1 + 1));
+export const estTerre = (ile, x, y) => Boolean(ile.terre?.[cle(x, y)]);
+/** Case d'eau collée à l'île par un côté (pas seulement par un coin) : on peut y construire un port. */
+export const estCote = (ile, x, y) => !estTerre(ile, x, y) && voisinsDe(x, y).some(([vx, vy]) => estTerre(ile, vx, vy));
+export const nbTerres = (ile) => Object.keys(ile.terre).length;
+/** Recalcule le rectangle qui contient la terre (utile pour parcourir l'île). */
+export function majExt(ile) {
+  const pts = Object.keys(ile.terre).map(coord);
+  ile.ext = {
+    x0: Math.min(...pts.map((p) => p[0])), y0: Math.min(...pts.map((p) => p[1])),
+    x1: Math.max(...pts.map((p) => p[0])), y1: Math.max(...pts.map((p) => p[1])),
+  };
+  return ile;
 }
 export const terrainDe = (ile, x, y) => (estTerre(ile, x, y) ? ile.terrain[cle(x, y)] || 'herbe' : 'eau');
 
@@ -146,34 +153,107 @@ const somme = (a, b) => { const r = { ...a }; for (const [k, v] of Object.entrie
 
 // ---------- Création, migration ----------
 
-function ileNeuve(n) {
-  const { l, h } = ILES[n];
-  const alea = aleaGraine(1000 + n * 77);
+/** Place forêts, rochers, buissons et cailloux sur la terre d'une île neuve. */
+function semer(terre, alea) {
   const terrain = {};
-  const terre = [];
-  for (let y = 1; y <= h; y++) for (let x = 1; x <= l; x++) terre.push(cle(x, y));
   const nbForets = Math.round(terre.length * 0.16), nbMontagnes = Math.max(1, Math.round(terre.length * 0.06));
   const types = [...Array(nbForets).fill('foret'), ...Array(nbMontagnes).fill('montagne'), 'buisson', 'buisson', 'caillou'];
   for (const type of types) {
     const libres = terre.filter((c) => !terrain[c]);
     terrain[libres[Math.floor(alea() * libres.length)]] = type;
   }
-  return { ext: { x0: 1, y0: 1, x1: l, y1: h }, terrain, cases: {}, travaux: {} };
+  return terrain;
+}
+
+/**
+ * Une forme d'île naturelle : on part du centre et l'on ajoute des cases au bord, en préférant celles qui ont
+ * déjà plusieurs voisines de terre (la forme reste ronde et pleine), avec un peu de hasard pour les caps et les anses.
+ */
+export function formeOrganique(l, h, surface, alea) {
+  const terre = new Set([cle(Math.ceil(l / 2), Math.ceil(h / 2))]);
+  const dedans = (x, y) => x >= 1 && x <= l && y >= 1 && y <= h;
+  while (terre.size < surface) {
+    const candidats = new Map();
+    for (const k of terre) {
+      for (const [x, y] of voisinsDe(...coord(k))) {
+        if (!dedans(x, y) || terre.has(cle(x, y))) continue;
+        const voisines = voisinsDe(x, y).filter(([a, b]) => terre.has(cle(a, b))).length;
+        candidats.set(cle(x, y), voisines ** 3 + alea() * 1.6);
+      }
+    }
+    if (!candidats.size) break;
+    // tirage au sort pondéré par le poids de chaque case
+    const total = [...candidats.values()].reduce((s, v) => s + v, 0);
+    let r = alea() * total;
+    for (const [k, poids] of candidats) { r -= poids; if (r <= 0) { terre.add(k); break; } }
+  }
+  // pas de lac fermé au milieu : l'eau entourée de terre devient de la terre
+  const dehors = new Set(), file = [];
+  for (let y = 0; y <= h + 1; y++) for (let x = 0; x <= l + 1; x++) if (!dedans(x, y)) { dehors.add(cle(x, y)); file.push([x, y]); }
+  while (file.length) {
+    const [x, y] = file.shift();
+    for (const [a, b] of voisinsDe(x, y)) {
+      const k = cle(a, b);
+      if (a < 0 || b < 0 || a > l + 1 || b > h + 1 || dehors.has(k) || terre.has(k)) continue;
+      dehors.add(k);
+      file.push([a, b]);
+    }
+  }
+  for (let y = 1; y <= h; y++) for (let x = 1; x <= l; x++) if (!dehors.has(cle(x, y))) terre.add(cle(x, y));
+  return [...terre];
+}
+
+function ileNeuve(n) {
+  const { l, h, surface } = ILES[n];
+  const alea = aleaGraine(1000 + n * 77);
+  const terre = formeOrganique(l, h, surface, alea);
+  const ile = { terre: Object.fromEntries(terre.map((k) => [k, 1])), terrain: semer(terre, alea), cases: {}, travaux: {} };
+  majExt(ile);
+  ile.centre = { x: (l + 1) / 2, y: (h + 1) / 2 };
+  return ile;
+}
+
+/** Une île rectangulaire (les anciennes sauvegardes) : la terre couvre tout le rectangle. */
+function ileRectangle(ext) {
+  const terre = {};
+  for (let y = ext.y0; y <= ext.y1; y++) for (let x = ext.x0; x <= ext.x1; x++) terre[cle(x, y)] = 1;
+  return { terre, ext: { ...ext }, centre: { x: (ext.x0 + ext.x1) / 2, y: (ext.y0 + ext.y1) / 2 } };
 }
 
 export function etatVide() {
-  return { version: 2, active: 0, ressources: { bois: 0, pierre: 0, ble: 0 }, iles: ILES.map((_, n) => ileNeuve(n)) };
+  return { version: 3, active: 0, ressources: { bois: 0, pierre: 0, ble: 0 }, iles: ILES.map((_, n) => ileNeuve(n)) };
 }
 
-/** Reprend une sauvegarde de la version 1 (cases numérotées dans une grille fixe). */
+/** Anciennes dimensions des îles rectangulaires (versions 1 et 2). */
+const ANCIENNES = [{ l: 5, h: 4 }, { l: 6, h: 4 }, { l: 6, h: 5 }, { l: 7, h: 5 }];
+
+/**
+ * Reprend une ancienne sauvegarde.
+ * - version 1 : cases numérotées dans une grille fixe, autour d'une île rectangulaire ;
+ * - version 2 : îles rectangulaires. Une île où rien n'a encore été fait prend la nouvelle forme naturelle ;
+ *   les autres gardent leur terre telle quelle (rien n'est perdu) et s'agrandiront case par case.
+ */
 export function migrer(ancien, t) {
-  if (ancien && ancien.version === 2) return ancien;
+  if (ancien && ancien.version === 3) return ancien;
+  if (ancien && ancien.version === 2) {
+    const neuf = etatVide();
+    ancien.iles.forEach((ile, n) => {
+      if (!neuf.iles[n]) return;
+      const vierge = !Object.keys(ile.cases || {}).length && !Object.keys(ile.travaux || {}).length;
+      if (vierge) ancien.iles[n] = neuf.iles[n];
+      else Object.assign(ile, ileRectangle(ile.ext));
+    });
+    ancien.version = 3;
+    return ancien;
+  }
   const e = etatVide();
   if (!ancien || !ancien.iles) return e;
   e.active = ancien.active || 0;
   ancien.iles.forEach((ile, n) => {
-    if (!ILES[n]) return;
-    const L = ILES[n].l + 2;
+    if (!ILES[n] || !Object.keys(ile.cases || {}).length) return;
+    const { l, h } = ANCIENNES[n], L = l + 2;
+    Object.assign(e.iles[n], ileRectangle({ x0: 1, y0: 1, x1: l, y1: h }));
+    for (const k of Object.keys(e.iles[n].terrain)) if (!e.iles[n].terre[k]) delete e.iles[n].terrain[k];
     for (const [i, b] of Object.entries(ile.cases || {})) {
       const x = Number(i) % L, y = Math.floor(Number(i) / L);
       e.iles[n].cases[cle(x, y)] = { type: b.type, niveau: b.niveau, chantier: null, depuis: t };
@@ -578,46 +658,40 @@ export function amenager(e, n, x, y, action, etoiles, payerEtoiles, t) {
   return { ok: true };
 }
 
-// ---------- Agrandir l'île ----------
+// ---------- Agrandir l'île, case par case ----------
 
-const DIRECTIONS = { nord: [0, -1], sud: [0, 1], ouest: [-1, 0], est: [1, 0] };
-export const NOMS_DIRECTIONS = { nord: 'vers le haut', sud: 'vers le bas', ouest: 'vers la gauche', est: 'vers la droite' };
+/** Prix d'une nouvelle case de terre : il monte doucement avec la taille de l'île. */
+export const coutCase = (ile) => {
+  const n = nbTerres(ile);
+  return { etoiles: 1 + Math.floor(n / 12), pierre: 2 + Math.floor(n / 8) };
+};
 
-/** Les cases d'eau qui deviendraient de la terre si l'on agrandit vers `dir`. */
-function nouvellesCases(ile, dir) {
-  const { x0, y0, x1, y1 } = ile.ext, out = [];
-  if (dir === 'nord' || dir === 'sud') { const y = dir === 'nord' ? y0 - 1 : y1 + 1; for (let x = x0; x <= x1; x++) out.push([x, y]); }
-  else { const x = dir === 'ouest' ? x0 - 1 : x1 + 1; for (let y = y0; y <= y1; y++) out.push([x, y]); }
+/** Peut-on acheter cette case d'eau ? Il faut qu'elle touche la terre, qu'elle soit libre et pas trop loin. */
+export function peutAcheter(ile, x, y) {
+  if (!estCote(ile, x, y) || ile.cases[cle(x, y)]) return false;
+  const c = ile.centre || { x: (ile.ext.x0 + ile.ext.x1) / 2, y: (ile.ext.y0 + ile.ext.y1) / 2 };
+  return Math.abs(x - c.x) <= PORTEE_MAX.x && Math.abs(y - c.y) <= PORTEE_MAX.y;
+}
+
+/** Toutes les cases qu'on peut acheter autour d'une île. */
+export function casesAchetables(ile) {
+  const out = [];
+  const { x0, y0, x1, y1 } = ile.ext;
+  for (let y = y0 - 1; y <= y1 + 1; y++) for (let x = x0 - 1; x <= x1 + 1; x++) if (peutAcheter(ile, x, y)) out.push(cle(x, y));
   return out;
 }
 
-export function coutAgrandir(ile, dir) {
-  const n = nouvellesCases(ile, dir).length;
-  return somme(COUT_AGRANDIR_FIXE, Object.fromEntries(Object.entries(COUT_AGRANDIR_CASE).map(([k, v]) => [k, v * n])));
-}
-
-/** Peut-on agrandir dans cette direction ? Renvoie null si oui, sinon la raison. */
-export function obstacleAgrandir(ile, dir) {
-  const { x0, y0, x1, y1 } = ile.ext;
-  const l = x1 - x0 + 1, h = y1 - y0 + 1;
-  if ((dir === 'nord' || dir === 'sud') && h >= TAILLE_MAX.h) return 'max';
-  if ((dir === 'ouest' || dir === 'est') && l >= TAILLE_MAX.l) return 'max';
-  if (nouvellesCases(ile, dir).some(([x, y]) => ile.cases[cle(x, y)])) return 'port';
-  return null;
-}
-
-export function agrandir(e, n, dir, etoiles, payerEtoiles) {
+/** Achète une case : elle sort de l'eau, en herbe. */
+export function acheterCase(e, n, x, y, etoiles, payerEtoiles) {
   const ile = e.iles[n];
-  if (!DIRECTIONS[dir]) return { ok: false, raison: 'direction' };
-  const obstacle = obstacleAgrandir(ile, dir);
-  if (obstacle) return { ok: false, raison: obstacle };
-  const cout = coutAgrandir(ile, dir);
+  if (!peutAcheter(ile, x, y)) return { ok: false, raison: 'case' };
+  const cout = coutCase(ile);
   if (!peutPayer(e, etoiles, cout)) return { ok: false, raison: 'cout', manque: manque(e, etoiles, cout) };
   if (!payer(e, cout, payerEtoiles)) return { ok: false, raison: 'cout' };
-  const cases = nouvellesCases(ile, dir);
-  if (dir === 'nord') ile.ext.y0--; else if (dir === 'sud') ile.ext.y1++; else if (dir === 'ouest') ile.ext.x0--; else ile.ext.x1++;
-  // les ports qui étaient au bord de ce côté restent sur l'eau : on ne bouge rien d'autre
-  return { ok: true, cases };
+  ile.terre[cle(x, y)] = 1;
+  delete ile.terrain[cle(x, y)];
+  majExt(ile);
+  return { ok: true };
 }
 
 // ---------- Le temps passe ----------

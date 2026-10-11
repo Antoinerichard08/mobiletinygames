@@ -54,6 +54,8 @@ Pour une nouvelle version : refaire les mêmes étapes, le bouton s'appellera **
     ou de pierre en plus). Perdue sur la mer ? Touchez le **nom de l'île** en haut : on revient au centre.
   - **Jouer** (en bas à gauche) ouvre les jeux ; après la partie, on revient directement sur l'île.
   - L'ampoule 💡 : Rose, la voisine, donne un **conseil** et montre où toucher.
+  - **Agrandir** : dans « Construire », onglet « L'île ». Les cases d'eau au bord de l'île sont marquées d'un « + » :
+    touchez-en une, puis la coche ✓. Elle sort de l'eau, en herbe. Une case à la fois, comme on veut.
   - Une île très belle en fait apparaître une nouvelle, cachée jusque-là dans les nuages !
 - **Bulles** : posez le doigt là où vous voulez envoyer la bulle (une ligne montre le chemin), levez-le pour tirer.
   Trois bulles de la même couleur éclatent, et tout ce qui ne tient plus tombe. Chaque couleur a son symbole
@@ -179,6 +181,12 @@ une appli légère, rapide sur un vieux téléphone et sous licence MIT, leurs t
   animaux, chantiers et terrains aménagés sont dessinés par `scripts/generer-sprites.mjs` dans la même palette ;
   le décor (arbres, ruche, puits, outils…) vient de « Tiny Town » de **Kenney** (CC0). Aucun autre pack libre
   n'existait dans le même style : c'est le meilleur compromis trouvé.
+- **Mon île, forme des îles** : la terre est un ensemble de cases de forme libre. Les îles neuves poussent à partir
+  du centre en préférant les cases déjà bien entourées (forme ronde et pleine, avec des caps), sans lac fermé.
+  Le pack Tiny Islands ne dessine que des îles rectangulaires : `cote.js` découpe ses bords et ses coins en calques
+  et compose chaque case de côte selon ses voisines (256 combinaisons, mises en cache). On agrandit case par case,
+  jusqu'à 5 cases de part et d'autre du centre de départ (10 × 8 au plus) ; le prix monte doucement avec la taille.
+  Les anciennes îles déjà construites gardent leur terre ; les îles vierges prennent la nouvelle forme.
 - **Mon île, ressources** : production calculée à partir de l'heure (horodatages), donc aussi appli fermée,
   avec un plafond par bâtiment pour que rien ne se perde ni ne presse.
 

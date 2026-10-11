@@ -3,8 +3,9 @@
 // Tout est dessiné à chaque image, à partir de l'état du jeu (regles.js), de la caméra et de la vie (vie.js).
 // Graphismes : « Tiny Islands » (Majadroid, CC0), « Tiny Town » (Kenney, CC0), le reste dessiné pour l'appli.
 import { T, S, tuileBatiment } from '../core/tuiles.js';
-import { BATIMENTS, DECORS, ILES, cle, coord, terrainDe, estTerre, stock, plafond, coutAgrandir, obstacleAgrandir } from './regles.js';
-import { origine, rectIle, panneauxAgrandir } from './plan.js';
+import { BATIMENTS, DECORS, ILES, cle, coord, terrainDe, estTerre, stock, plafond, casesAchetables } from './regles.js';
+import { origine, rectIle } from './plan.js';
+import { creerCotes, masqueCote } from './cote.js';
 
 const POLICE = '"Atkinson Hyperlegible", system-ui, sans-serif';
 const ICONES = { bois: T.icones.bois, pierre: T.icones.pierre, ble: T.icones.ble };
@@ -34,10 +35,8 @@ export function imageCase(ile, x, y, t) {
   if (terrain === 'buisson') return { f: 's', c: S.broussailles };
   if (terrain === 'caillou') return { f: 's', c: S.gravats };
   if (terrain === 'herbe') return { f: 't', c: T.herbe };
-  const { x0, y0, x1, y1 } = ile.ext;
-  if (y < y0) return { f: 't', c: x < x0 ? T.coinNO : x > x1 ? T.coinNE : T.bordN };
-  if (y > y1) return { f: 't', c: x < x0 ? T.coinSO : x > x1 ? T.coinSE : T.bordS };
-  return { f: 't', c: x < x0 ? T.bordO : T.bordE };
+  // la mer : la côte se compose selon la terre voisine (voir cote.js)
+  return { f: 't', c: T.eau, eau: true, masque: masqueCote((dx, dy) => estTerre(ile, x + dx, y + dy)) };
 }
 
 /** Image d'un type de bâtiment ou de décor (pour les fantômes et la boutique). */
@@ -62,7 +61,9 @@ export function creerRendu(toile) {
   images.s.src = new URL('../../assets/ile/sprites.png', import.meta.url).href;
   const pret = Promise.all(Object.values(images).map((im) => (im.decode ? im.decode().catch(() => {}) : Promise.resolve())));
   let mer = '#639bff';
+  let cotes = () => null;
   pret.then(() => {
+    try { cotes = creerCotes(images.t); } catch { /* sans côtes : la mer touche l'herbe */ }
     try { // la couleur exacte de la mer de Tiny Islands
       const c = document.createElement('canvas'); c.width = c.height = 1;
       const g = c.getContext('2d');
@@ -100,6 +101,13 @@ export function creerRendu(toile) {
     if (alpha !== 1) ctx.globalAlpha = 1;
   }
   /** Une case du monde (wx, wy = coin haut gauche), avec un éventuel agrandissement autour de son centre. */
+  /** Une case d'eau au bord de l'île, avec sa côte composée. */
+  function caseCote(masque, wx, wy) {
+    const tuileCote = cotes(masque);
+    if (!tuileCote) return;
+    if (X(wx + 2) < 0 || Y(wy + 2) < 0 || X(wx - 1) > toile.width || Y(wy - 1) > toile.height) return;
+    ctx.drawImage(tuileCote, X(wx), Y(wy), X(wx + 1) - X(wx), Y(wy + 1) - Y(wy));
+  }
   function caseMonde(img, wx, wy, echelle = 1, alpha = 1, decalY = 0) {
     if (X(wx + 2) < 0 || Y(wy + 2) < 0 || X(wx - 1) > toile.width || Y(wy - 1) > toile.height) return; // hors de l'écran
     if (echelle === 1 && !decalY) return image(img, X(wx), Y(wy), X(wx + 1), Y(wy + 1), alpha);
@@ -158,13 +166,27 @@ export function creerRendu(toile) {
 
   /** L'écume qui vient lécher la côte : des contours qui s'éloignent et s'effacent. */
   function ecume(ile, ox, oy, temps) {
-    const { x0, y0, x1, y1 } = ile.ext;
+    const bords = [];
+    for (const k of Object.keys(ile.terre)) {
+      const [x, y] = coord(k);
+      if (!estTerre(ile, x, y - 1)) bords.push([x, y, 'n']);
+      if (!estTerre(ile, x, y + 1)) bords.push([x, y, 's']);
+      if (!estTerre(ile, x - 1, y)) bords.push([x, y, 'o']);
+      if (!estTerre(ile, x + 1, y)) bords.push([x, y, 'e']);
+    }
+    ctx.lineWidth = Math.max(1.5, Z() * 0.045);
+    ctx.lineCap = 'round';
     for (let i = 0; i < 2; i++) {
-      const p = (temps / 3.2 + i * 0.5) % 1, ecart = 0.32 + p * 0.5;
-      const a = X(ox + x0 - ecart), b = Y(oy + y0 - ecart), c = X(ox + x1 + 1 + ecart), d = Y(oy + y1 + 1 + ecart);
-      ctx.strokeStyle = `rgba(255, 255, 255, ${0.42 * (1 - p)})`;
-      ctx.lineWidth = Math.max(1.5, Z() * 0.045);
-      rondRect(a, b, c - a, d - b, Z() * (0.25 + p * 0.3));
+      const p = (temps / 3.2 + i * 0.5) % 1, d = 0.3 + p * 0.45, r = d; // l'écart, et le débord aux coins
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.4 * (1 - p)})`;
+      ctx.beginPath();
+      for (const [x, y, cote] of bords) {
+        const wx = ox + x, wy = oy + y;
+        if (cote === 'n') { ctx.moveTo(X(wx - r * 0.5), Y(wy - d)); ctx.lineTo(X(wx + 1 + r * 0.5), Y(wy - d)); }
+        if (cote === 's') { ctx.moveTo(X(wx - r * 0.5), Y(wy + 1 + d)); ctx.lineTo(X(wx + 1 + r * 0.5), Y(wy + 1 + d)); }
+        if (cote === 'o') { ctx.moveTo(X(wx - d), Y(wy - r * 0.5)); ctx.lineTo(X(wx - d), Y(wy + 1 + r * 0.5)); }
+        if (cote === 'e') { ctx.moveTo(X(wx + 1 + d), Y(wy - r * 0.5)); ctx.lineTo(X(wx + 1 + d), Y(wy + 1 + r * 0.5)); }
+      }
       ctx.stroke();
     }
   }
@@ -204,8 +226,12 @@ export function creerRendu(toile) {
         const ef = echelleEffet(`${n}:${k}`, s.temps);
         // sous un bâtiment qui apparaît, l'herbe reste en place (une terre qui sort de l'eau, elle, part de la mer)
         if (terre && (ef.s !== 1 || ef.dy) && effets.pops.get(`${n}:${k}`)?.genre !== 'terre') caseMonde({ f: 't', c: T.herbe }, wx, wy);
-        if (s.deplacement && s.deplacement.n === n && s.deplacement.de === k) {
-          caseMonde({ f: 't', c: c && BATIMENTS[c.type]?.cote ? T.bordN : T.herbe }, wx, wy);
+        if (!terre) {
+          // une case d'eau : sa côte, puis le port s'il y en a un (sauf pendant qu'on le déplace)
+          caseCote(c ? masqueCote((dx, dy) => estTerre(ile, x + dx, y + dy)) : img.masque, wx, wy);
+          if (!c || (s.deplacement && s.deplacement.n === n && s.deplacement.de === k)) continue;
+        } else if (s.deplacement && s.deplacement.n === n && s.deplacement.de === k) {
+          caseMonde({ f: 't', c: T.herbe }, wx, wy);
           continue;
         }
         caseMonde(img, wx, wy, ef.s, ef.a, ef.dy);
@@ -496,12 +522,25 @@ export function creerRendu(toile) {
         badge(f.gain ? `${signe(f.gain)} beauté` : 'même beauté', cx, Y(oy + y + 1), f.gain > 0);
       }
     }
-    // les panneaux pour agrandir l'île
+    // agrandir : les cases d'eau qu'on peut acheter, et celle qu'on a choisie
     if (s.agrandir !== null && s.agrandir !== undefined) {
       const n = s.agrandir, ile = s.E.iles[n];
-      for (const p of panneauxAgrandir(ile, n)) {
-        if (obstacleAgrandir(ile, p.dir)) continue;
-        cibles.push({ genre: 'panneau', n, dir: p.dir, ...panneau(p, coutAgrandir(ile, p.dir), s) });
+      const respire = s.reduit ? 0.8 : 0.6 + 0.3 * Math.sin(s.temps * 4);
+      for (const k of casesAchetables(ile)) {
+        const choisie = s.agrandirChoix === k;
+        const r = contourCase(n, k, choisie ? '#ffd23f' : `rgba(255, 255, 255, ${respire})`, choisie ? 4 : 2.5, choisie ? null : [6, 5], choisie ? 'rgba(126, 200, 80, .55)' : 'rgba(255, 255, 255, .14)');
+        const cx = r.x0 + r.l / 2, cy = r.y0 + r.h / 2;
+        if (choisie) {
+          // l'herbe à venir, en transparence
+          const [x, y] = coord(k), { ox, oy } = origine(ile, n);
+          caseMonde({ f: 't', c: T.herbe }, ox + x, oy + y, 1, 0.7); // le prix est dans le bandeau, en haut
+        } else {
+          // un petit « + » au milieu
+          const t2 = Math.max(16 * dpr, z * 0.34);
+          ctx.fillStyle = 'rgba(20, 28, 40, .55)';
+          ctx.beginPath(); ctx.arc(cx, cy, t2 * 0.62, 0, Math.PI * 2); ctx.fill();
+          texte('+', cx, cy + dpr, t2);
+        }
       }
     }
     // la flèche du guide
@@ -530,44 +569,6 @@ export function creerRendu(toile) {
     ctx.lineJoin = 'round';
     ctx.stroke();
   }
-  function panneau(p, cout, s) {
-    const z = Z(), cx = ((p.x - cam.x) * cam.z + cam.l / 2) * dpr, cy = ((p.y - cam.y) * cam.z + cam.h / 2) * dpr;
-    const l = Math.max(58 * dpr, z * 1.3), h = Math.max(42 * dpr, z * 0.86);
-    const saut = s.reduit ? 0 : Math.sin(s.temps * 3 + p.x) * z * 0.04;
-    const y = cy - h / 2 + saut;
-    // piquet
-    ctx.fillStyle = '#714114';
-    ctx.fillRect(cx - z * 0.06, y + h - 2, z * 0.12, z * 0.35);
-    ctx.fillStyle = 'rgba(0, 0, 0, .22)';
-    rondRect(cx - l / 2, y + 4 * dpr, l, h, h * 0.2);
-    ctx.fill();
-    ctx.fillStyle = '#c8772c';
-    rondRect(cx - l / 2, y, l, h, h * 0.2);
-    ctx.fill();
-    ctx.lineWidth = 3 * dpr;
-    ctx.strokeStyle = '#593411';
-    ctx.stroke();
-    // flèche dans la direction
-    const ang = { nord: -Math.PI / 2, sud: Math.PI / 2, ouest: Math.PI, est: 0 }[p.dir];
-    ctx.save();
-    ctx.translate(cx, y + h * 0.36);
-    ctx.rotate(ang);
-    ctx.fillStyle = '#ffffff';
-    const a = h * 0.26;
-    ctx.beginPath();
-    ctx.moveTo(a, 0); ctx.lineTo(0, -a * 0.8); ctx.lineTo(0, -a * 0.35); ctx.lineTo(-a, -a * 0.35);
-    ctx.lineTo(-a, a * 0.35); ctx.lineTo(0, a * 0.35); ctx.lineTo(0, a * 0.8);
-    ctx.closePath();
-    ctx.fill();
-    ctx.lineWidth = 2 * dpr;
-    ctx.strokeStyle = '#593411';
-    ctx.stroke();
-    ctx.restore();
-    const prix = [cout.etoiles ? `${cout.etoiles}★` : '', cout.pierre ? `${cout.pierre} pierre` : ''].filter(Boolean).join(' · ');
-    texte(prix, cx, y + h * 0.78, Math.min(h * 0.3, taillePolice(0.24, 13)));
-    return rectCss(cx - l / 2, y, cx + l / 2, y + h);
-  }
-
   // ---------- Effets : textes qui s'envolent, particules ----------
 
   function dessinerEffets(s) {
@@ -624,7 +625,7 @@ export function creerRendu(toile) {
   /**
    * @param s { E, cam, t (heure), temps (secondes, pour les animations), ouvertes, vie, reduit,
    *            selection {n, cle}, propositions {n, gains: Map, meilleur}, fantome {n, cle, image, valide, gain},
-   *            deplacement {n, de}, agrandir (n | null), guide {n, cle} }
+   *            deplacement {n, de}, agrandir (n | null), agrandirChoix (cle | null), guide {n, cle} }
    */
   function dessiner(s) {
     s0 = s;

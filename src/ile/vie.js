@@ -18,6 +18,7 @@ const PASSAGE = new Set(['champ', 'fleurs', 'champignons', 'buisson']);
 function lieux(ile) {
   const out = { terre: [], forets: [], chantiers: [], champs: [], maisons: [], cabanes: [] };
   for (let y = ile.ext.y0; y <= ile.ext.y1; y++) for (let x = ile.ext.x0; x <= ile.ext.x1; x++) {
+    if (!estTerre(ile, x, y)) continue; // une île de forme libre : son rectangle contient aussi de la mer
     const k = cle(x, y), c = ile.cases[k], t = terrainDe(ile, x, y);
     out.terre.push([x, y]);
     if (t === 'foret' && !c) out.forets.push([x, y]);
