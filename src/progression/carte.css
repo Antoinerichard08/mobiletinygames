@@ -48,6 +48,8 @@
 .noeud .cadeau { position: absolute; left: -2px; top: -12px; width: 30px; height: 30px; color: #E0457B; }
 .noeud .cadeau.coffre { color: #C77A1E; }
 .noeud .cadeau svg { width: 100%; height: 100%; }
+.noeud .lot-pieces { position: absolute; right: -6px; top: -12px; width: 28px; height: 28px; color: #F2B632; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, .35)); }
+.noeud .lot-pieces svg { width: 100%; height: 100%; }
 .bulle {
   position: absolute; top: -40px; background: var(--gold); color: #3A2A00; font-weight: 700; font-size: 1rem;
   padding: 4px 12px; border-radius: 12px; box-shadow: 0 3px 0 rgba(0, 0, 0, .2);

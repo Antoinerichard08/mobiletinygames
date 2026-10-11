@@ -19,5 +19,6 @@ export const ICONE = {
   cadenas: svg('<path d="M7.5 10V8a4.5 4.5 0 0 1 9 0v2" fill="none" stroke="currentColor" stroke-width="2.6"/><rect x="4.5" y="10" width="15" height="11" rx="2.5" fill="currentColor"/>'),
   horloge: svg('<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="M12 7v5.5l3.5 2" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>'),
   agrandir: svg('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/><rect x="8.5" y="8.5" width="7" height="7" rx="1.5" fill="currentColor"/>'),
+  puzzle: svg('<path d="M4 8h4a2.6 2.6 0 1 1 5 0h4v4a2.6 2.6 0 1 1 0 5v4H4v-4a2.6 2.6 0 1 0 0-5z" fill="currentColor" stroke="rgba(0,0,0,.35)" stroke-width="1.2" stroke-linejoin="round"/>'),
   personne: svg('<circle cx="12" cy="7" r="4" fill="currentColor"/><path d="M4 21a8 8 0 0 1 16 0z" fill="currentColor"/>'),
 };

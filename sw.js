@@ -60,6 +60,7 @@ const FICHIERS = [
   'src/games/sudoku/index.js',
   'src/games/sudoku/moteur.js',
   'src/games/sudoku/sudoku.css',
+  'src/ile/atelier.js',
   'src/ile/camera.js',
   'src/ile/conseil.js',
   'src/ile/cote.js',

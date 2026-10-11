@@ -5,9 +5,12 @@
 // Rythme : quelques NOUVEAUX niveaux par jour (« jetons ») ; les niveaux déjà gagnés se rejouent à volonté.
 import { lire, ecrire } from '../core/stockage.js';
 import { modeDev } from '../core/config.js';
+import { ajouterPieces } from '../core/pieces.js';
 
 export const PAR_CHAPITRE = 12;
 export const JETONS_PAR_JOUR = 3;
+/** Pièces de puzzle offertes tous les 10 niveaux de la carte (la première fois qu'on les réussit). */
+export const LOT_PIECES = 4;
 export const JETONS_MAX = 6;
 export const JETONS_PREMIER_JOUR = 5;
 
@@ -48,6 +51,7 @@ export function niveau(n) {
   const def = { numero: n, id: `n${n}`, chapitre: c, rang: k, nomChapitre: chapitre.nom, teinte: chapitre.teinte, jeu, niveau: diff };
   def.grandDefi = k === PAR_CHAPITRE - 1;
   def.cadeau = k === 5 ? 'cadeau' : def.grandDefi ? 'coffre' : null;
+  def.pieces = n % 10 === 0 ? LOT_PIECES : 0; // un lot de pièces de puzzle tous les 10 niveaux
   let objectif, bonus;
   if (jeu === 'sudoku') {
     objectif = `Sudoku ${NOMS_DIFF[diff]} : terminer la grille`;
@@ -153,6 +157,7 @@ export function enregistrer(def, resultat, aujourdhui = jourDe()) {
     if (def.cadeau === 'cadeau') cadeau = 3;
     if (def.cadeau === 'coffre') cadeau = 10;
     gain += cadeau;
+    if (def.pieces) ajouterPieces(def.pieces, 'aventure');
   }
   if (!resultat.gagne) gain = 1; // une étoile d'encouragement quand on va au bout
   if (obtenues > avant) e.etoiles[def.numero] = obtenues;
@@ -169,8 +174,9 @@ export function enregistrer(def, resultat, aujourdhui = jourDe()) {
       ? 'Les trois étoiles ! Bravo.'
       : `Pour une étoile de plus : ${manquants.join(', ')}.`;
     if (cadeau) texte += ` Et un ${def.cadeau === 'coffre' ? 'coffre' : 'cadeau'} : +${cadeau} ★ !`;
+    if (nouveau && def.pieces) texte += ` Et un lot de ${def.pieces} pièces de puzzle !`;
   }
-  return { etoilesNiveau: obtenues, etoilesGagnees: gain, nouveau, cadeau, titre, texte };
+  return { etoilesNiveau: obtenues, etoilesGagnees: gain, nouveau, cadeau, pieces: nouveau ? def.pieces : 0, titre, texte };
 }
 
 /** Pour l'animation de la carte : la dernière progression, une seule fois. */

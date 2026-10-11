@@ -6,7 +6,7 @@ import { ajouterEtoiles, etoilesPartie } from './etoiles.js';
 import { annoncer } from './evenements.js';
 
 let gestionDefi = null; // (resultat) => { etoilesGagnees, etoilesNiveau, titre, texte }
-const analyses = []; // (resultat) => [{ texte, etoiles }] : récompenses supplémentaires (missions…)
+const analyses = []; // (resultat, bonusDejaObtenus) => [{ texte, etoiles, genre? }] : récompenses supplémentaires (missions…)
 
 export function definirGestionDefi(f) {
   gestionDefi = f;
@@ -33,7 +33,7 @@ export function recompenser(r) {
   const bonus = [];
   const complet = { ...r, etoiles };
   for (const a of analyses) {
-    for (const b of a(complet) || []) {
+    for (const b of a(complet, bonus) || []) {
       bonus.push(b);
       if (b.etoiles > 0) ajouterEtoiles(b.etoiles, 'bonus');
     }

@@ -8,6 +8,7 @@ import { niveau, etat, niveauCourant, statut, prendreDerniere, PAR_CHAPITRE, CHA
 import { liste as listeMissions, coffreOuvert, BONUS_COFFRE } from './missions.js';
 import { solde } from '../core/etoiles.js';
 import { modeDev } from '../core/config.js';
+import { ICONE } from '../ile/icones.js';
 
 chargerStyle(new URL('./carte.css', import.meta.url));
 
@@ -80,6 +81,7 @@ function dessiner() {
       <span class="pastille">${st === 'verrouille' || st === 'demain' ? `<b class="cadenas">${CADENAS}</b>` : `<b>${n}</b>`}<span class="jeu">${ICONES_JEUX[def.jeu]}</span></span>
       <span class="etoiles">${etoiles}</span>
       ${def.cadeau && st !== 'gagne' ? `<span class="cadeau ${def.cadeau}">${CADEAU}</span>` : ''}
+      ${def.pieces && st !== 'gagne' ? `<span class="lot-pieces" title="${def.pieces} pièces de puzzle">${ICONE.puzzle}</span>` : ''}
       ${st === 'ouvert' ? '<span class="bulle">Jouer</span>' : ''}
     </button>`;
     // bannière de chapitre sous le premier niveau de chaque chapitre
@@ -150,6 +152,7 @@ async function ouvrirNiveau(n) {
     <p class="niveau-objectif">${def.objectif}</p>
     <ul class="criteres">${criteres}</ul>
     ${def.cadeau && st !== 'gagne' ? `<p class="note">${def.cadeau === 'coffre' ? 'Un coffre de 10 ★' : 'Un cadeau de 3 ★'} vous attend en réussissant ce niveau.</p>` : ''}
+    ${def.pieces && st !== 'gagne' ? `<p class="note">Un lot de ${def.pieces} pièces de puzzle vous attend aussi.</p>` : ''}
     ${pied}`);
   if (r === 'jouer') location.hash = `#/niveau/${n}`;
 }

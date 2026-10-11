@@ -3,6 +3,9 @@
 import { definirGestionDefi, ajouterAnalyse } from '../core/partie.js';
 import { niveau, enregistrer } from './niveaux.js';
 import { signaler } from './missions.js';
+import { analyseAtelier } from '../ile/atelier.js';
 
 definirGestionDefi((r) => enregistrer(niveau(r.defi.numero), r));
 ajouterAnalyse((r) => signaler(r));
+// après les missions : chaque partie gagnée et chaque mission font avancer l'Atelier du puzzle
+ajouterAnalyse((r, bonus) => analyseAtelier(r, bonus));

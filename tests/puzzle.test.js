@@ -97,3 +97,55 @@ test('tirelire de pièces : on ajoute, on dépense ce qu’on a', () => {
   assert.equal(soldePieces(), 2);
   assert.equal(totalPieces(), 5, 'le total reçu ne baisse jamais');
 });
+
+// ---------- Accélérations et récompense de l'Aventure ----------
+
+test('minutes gagnées : selon la difficulté de la partie gagnée, une heure par mission', async () => {
+  const { minutesGagnees, texteDuree } = await import('../src/ile/atelier.js');
+  assert.equal(minutesGagnees({ gagne: true, difficulte: 'facile' }), 30);
+  assert.equal(minutesGagnees({ gagne: true, difficulte: 'moyen' }), 45);
+  assert.equal(minutesGagnees({ gagne: true, difficulte: 'difficile' }), 60);
+  assert.equal(minutesGagnees({ gagne: true }), 45, 'sans difficulté (Aventure, Bulles)');
+  assert.equal(minutesGagnees({ gagne: false, difficulte: 'facile' }), 0, 'une partie perdue ne compte pas');
+  assert.equal(minutesGagnees({ gagne: false }, 2), 120, 'mais ses missions, si');
+  assert.equal(texteDuree(45), '45 min');
+  assert.equal(texteDuree(60), '1 h');
+  assert.equal(texteDuree(105), '1 h 45');
+});
+
+test('fin de partie : l’Atelier de la sauvegarde avance, avec une petite ligne douce', async () => {
+  viderMemoire();
+  const { ecrire, lire } = await import('../src/core/stockage.js');
+  const { recompenser } = await import('../src/core/partie.js');
+  await import('../src/progression/branchement.js');
+  // sans Atelier : rien ne s'affiche
+  let r = recompenser({ jeu: 'sudoku', gagne: true, difficulte: 'difficile' });
+  assert.equal(r.bonus.some((b) => b.genre === 'atelier'), false);
+  // avec un Atelier
+  const { e, k } = avecAtelier(1, Date.now());
+  ecrire('ile', e);
+  r = recompenser({ jeu: 'sudoku', gagne: true, difficulte: 'difficile' });
+  const ligne = r.bonus.find((b) => b.genre === 'atelier');
+  assert.ok(ligne, 'une ligne pour l’Atelier');
+  assert.match(ligne.texte, /avancé de/);
+  assert.equal(ligne.etoiles, 0);
+  const apres = lire('ile', null).iles[0].cases[k];
+  assert.ok(apres.depuis < e.iles[0].cases[k].depuis, 'le temps de travail a avancé');
+});
+
+test('Aventure : un lot de 4 pièces tous les 10 niveaux, la première fois seulement', async () => {
+  viderMemoire();
+  const { niveau, enregistrer, LOT_PIECES } = await import('../src/progression/niveaux.js');
+  assert.equal(LOT_PIECES, 4);
+  assert.equal(niveau(10).pieces, 4);
+  assert.equal(niveau(20).pieces, 4);
+  assert.equal(niveau(9).pieces, 0);
+  const victoire = { gagne: true, details: { indices: 0, erreurs: 0, annulations: 0, coups: 100, pionsRestants: 12 } };
+  const r1 = enregistrer(niveau(10), victoire, '2026-10-11');
+  assert.equal(r1.pieces, 4);
+  assert.match(r1.texte, /4 pièces de puzzle/);
+  assert.equal(soldePieces(), 4);
+  const r2 = enregistrer(niveau(10), victoire, '2026-10-11');
+  assert.equal(r2.pieces, 0, 'rejouer le niveau ne redonne pas le lot');
+  assert.equal(soldePieces(), 4);
+});

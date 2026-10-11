@@ -65,13 +65,13 @@ export function signaler(r, aujourdhui = jourDe()) {
     e.progres[m.id] = (e.progres[m.id] || 0) + (plus === true ? 1 : plus);
     if (e.progres[m.id] >= m.but) {
       e.faites[m.id] = true;
-      recompenses.push({ texte: `Mission accomplie : ${m.texte.toLowerCase()}`, etoiles: m.etoiles });
+      recompenses.push({ texte: `Mission accomplie : ${m.texte.toLowerCase()}`, etoiles: m.etoiles, genre: 'mission' });
     }
   }
   const toutes = missionsDuJour(aujourdhui).every((m) => e.faites[m.id]);
   if (toutes && !e.coffre) {
     e.coffre = true;
-    recompenses.push({ texte: 'Les 3 missions du jour sont faites : le coffre s’ouvre !', etoiles: BONUS_COFFRE });
+    recompenses.push({ texte: 'Les 3 missions du jour sont faites : le coffre s’ouvre !', etoiles: BONUS_COFFRE, genre: 'coffre' });
   }
   ecrire(CLE, e);
   return recompenses;
