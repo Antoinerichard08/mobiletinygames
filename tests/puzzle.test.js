@@ -179,3 +179,77 @@ test('service worker : le catalogue est gardé hors ligne, les tableaux sont té
   assert.ok(!appli.some((f) => f.startsWith('assets/puzzles/')), 'les 8 Mo de tableaux ne sont pas mis en cache d’avance');
   assert.equal(listerImagesPuzzles().length, 27);
 });
+
+// ---------- Le jeu Puzzle ----------
+
+test('puzzle : cinq puzzles proposés (3 petits, 1 moyen, 1 grand), tous différents', async () => {
+  const m = await import('../src/games/puzzle/moteur.js');
+  const { readFileSync } = await import('node:fs');
+  const catalogue = JSON.parse(readFileSync(new URL('../data/catalogue-puzzles.json', import.meta.url), 'utf8'));
+  const etat = m.etatNeuf(catalogue, () => 0.3);
+  assert.deepEqual(etat.emplacements.map((e) => e.taille), ['petit', 'petit', 'petit', 'moyen', 'grand']);
+  assert.deepEqual(m.TAILLES, { petit: 12, moyen: 24, grand: 48 });
+  assert.equal(new Set(etat.emplacements.map((e) => e.id)).size, 5);
+  for (const e of etat.emplacements) assert.equal(catalogue.images.find((t) => t.id === e.id).taille, e.taille, 'un tableau prévu pour cette taille');
+});
+
+test('puzzle : on investit ses pièces sur le puzzle de son choix, jamais plus que nécessaire', async () => {
+  const m = await import('../src/games/puzzle/moteur.js');
+  const catalogue = { images: [{ id: 'a', taille: 'petit' }, { id: 'b', taille: 'petit' }, { id: 'c', taille: 'petit' }, { id: 'd', taille: 'moyen' }, { id: 'e', taille: 'grand' }] };
+  const etat = m.etatNeuf(catalogue);
+  assert.equal(m.investir(etat, 0, 5), 5);
+  assert.equal(m.manquantes(etat.emplacements[0]), 7);
+  assert.equal(m.pret(etat.emplacements[0]), false);
+  assert.equal(m.investir(etat, 0, 100), 7, 'seulement ce qui manque');
+  assert.equal(m.pret(etat.emplacements[0]), true);
+  assert.equal(m.investir(etat, 0, 3), 0);
+  assert.equal(m.investir(etat, 4, 2.7), 2, 'des pièces entières');
+});
+
+test('puzzle : terminé, il rejoint la bibliothèque et un nouveau de même taille le remplace', async () => {
+  const m = await import('../src/games/puzzle/moteur.js');
+  const images = ['p1', 'p2', 'p3', 'p4', 'p5'].map((id) => ({ id, taille: 'petit' })).concat([{ id: 'm1', taille: 'moyen' }, { id: 'g1', taille: 'grand' }]);
+  const catalogue = { images };
+  let tirage = 0;
+  const alea = () => (tirage++ % 10) / 10;
+  const etat = m.etatNeuf(catalogue, alea);
+  const premier = etat.emplacements[0].id;
+  m.investir(etat, 0, 12);
+  etat.assemblages[premier] = { places: [1, 2] };
+  const fini = m.terminer(etat, 0, catalogue, 1234, alea);
+  assert.deepEqual(fini, { id: premier, taille: 'petit', date: 1234 });
+  assert.equal(etat.termines.length, 1);
+  assert.equal(etat.assemblages[premier], undefined, 'l’assemblage en cours est rangé');
+  const nouveau = etat.emplacements[0];
+  assert.equal(nouveau.taille, 'petit');
+  assert.equal(nouveau.investies, 0);
+  assert.notEqual(nouveau.id, premier);
+  assert.ok(!etat.emplacements.slice(1).some((e) => e.id === nouveau.id), 'jamais deux fois le même à l’écran');
+  // quand tous les petits ont été vus, on prend un autre tableau, puis on recommence par les plus anciens
+  for (let tour = 0; tour < 6; tour++) { m.investir(etat, 0, 12); m.terminer(etat, 0, catalogue, 2000 + tour, alea); }
+  const ids = etat.emplacements.map((e) => e.id);
+  assert.equal(new Set(ids).size, 5, 'toujours cinq puzzles différents');
+});
+
+test('puzzle : la grille suit les proportions du tableau, les pièces s’emboîtent', async () => {
+  const m = await import('../src/games/puzzle/moteur.js');
+  assert.deepEqual(m.grille(12, 4 / 3), { colonnes: 4, lignes: 3 });
+  assert.deepEqual(m.grille(12, 3 / 4), { colonnes: 3, lignes: 4 });
+  assert.deepEqual(m.grille(24, 1.4), { colonnes: 6, lignes: 4 });
+  assert.deepEqual(m.grille(48, 1.33), { colonnes: 8, lignes: 6 });
+  assert.deepEqual(m.grille(48, 1.94), { colonnes: 8, lignes: 6 }, 'un tableau très large');
+  const f = m.formes(4, 3, 'tournesols');
+  assert.deepEqual(m.formes(4, 3, 'tournesols'), f, 'toujours les mêmes formes pour un tableau');
+  // deux pièces voisines : l'ergot de l'une entre dans l'encoche de l'autre
+  for (let l = 0; l < 3; l++) for (let c = 0; c < 4; c++) {
+    const b = m.bordsPiece(f, 4, 3, c, l);
+    if (c < 3) assert.equal(b.droite, -m.bordsPiece(f, 4, 3, c + 1, l).gauche);
+    if (l < 2) assert.equal(b.bas, -m.bordsPiece(f, 4, 3, c, l + 1).haut);
+    if (l === 0) assert.equal(b.haut, 0, 'bord droit en haut du cadre');
+    if (c === 3) assert.equal(b.droite, 0);
+  }
+  assert.equal(m.aimantee(2.3, 1.2, 2, 1), true, 'tout près : la pièce s’aimante');
+  assert.equal(m.aimantee(2.6, 1.4, 2, 1), false);
+  const ordre = m.melangees(12, 'x');
+  assert.deepEqual([...ordre].sort((a, b) => a - b), [...Array(12).keys()]);
+});

@@ -67,7 +67,7 @@ async function compresser(blob) {
     toile.height = h;
     toile.getContext('2d').drawImage(bitmap, 0, 0, l, h);
     bitmap.close?.();
-    const webp = await new Promise((ok) => toile.toBlob(ok, 'image/webp', 0.85));
+    const webp = await new Promise((ok) => toile.toBlob(ok, 'image/webp', 0.8));
     return webp && webp.type === 'image/webp' && webp.size < blob.size ? webp : blob;
   } catch {
     return blob;

@@ -12,5 +12,6 @@ import solitaire from './games/solitaire/index.js';
 import dames from './games/dames/index.js';
 import backgammon from './games/backgammon/index.js';
 import bulles from './games/bulles/index.js';
+import puzzle from './games/puzzle/index.js';
 
-export const JEUX = [sudoku, solitaire, dames, backgammon, bulles];
+export const JEUX = [sudoku, solitaire, dames, backgammon, bulles, puzzle];
