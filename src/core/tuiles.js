@@ -22,7 +22,7 @@ export const T = {
  */
 export const S = {
   habitant: (variante, image) => [image, variante], // variante 0..4 ; image 0 debout, 1-2 marche, 3-4 travail, 5-6 porte
-  mouton: [[0, 5], [1, 5]], poule: [[2, 5], [3, 5]], mouette: [[4, 5], [5, 5]], bouteille: [6, 5], broussailles: [7, 5],
+  mouton: [[0, 5], [1, 5]], poule: [[2, 5], [3, 5]], mouette: [[4, 5], [5, 5]], bouteille: [6, 5], broussailles: [7, 5], atelier: [[8, 5], [9, 5], [10, 5], [11, 5]], piece: [12, 5],
   chantier: [[0, 6], [1, 6], [2, 6]], souche: [3, 6], gravats: [4, 6], etang: [5, 6], pousse: [7, 6],
   fleurs: [6, 6], fleurs2: [11, 6], carriere: [[8, 6], [9, 6], [10, 6]],
   decor: { automne: [0, 7], sapin: [1, 7], arbre: [2, 7], buisson: [3, 7], champignons: [4, 7], ruche: [5, 7], puits: [6, 7], panneau: [7, 7], fleurs: [6, 6] },

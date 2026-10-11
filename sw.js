@@ -29,6 +29,7 @@ const FICHIERS = [
   'src/core/navigation.js',
   'src/core/outils.js',
   'src/core/partie.js',
+  'src/core/pieces.js',
   'src/core/resultat.js',
   'src/core/stockage.js',
   'src/core/travail.js',

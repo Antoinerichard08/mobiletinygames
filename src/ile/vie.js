@@ -11,7 +11,7 @@ const choisir = (liste) => liste[Math.floor(Math.random() * liste.length)];
 /** Un nombre stable entre 0 et 1 pour une chaîne (les poules ne changent pas de maison à chaque dessin). */
 const empreinte = (s) => { let h = 2166136261; for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return ((h >>> 0) % 1000) / 1000; };
 
-const MAISONS = new Set(['maison', 'village', 'hameau', 'chateau', 'ferme']);
+const MAISONS = new Set(['maison', 'village', 'hameau', 'chateau', 'ferme', 'atelier']);
 const PASSAGE = new Set(['champ', 'fleurs', 'champignons', 'buisson']);
 
 /** Les lieux utiles d'une île. */

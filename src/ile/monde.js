@@ -24,6 +24,7 @@ export function imageCase(ile, x, y, t) {
     let img;
     if (DECORS[c.type]) img = { f: 's', c: S.decor[c.type] || S.fleurs };
     else if (c.type === 'carriere') img = { f: 's', c: S.carriere[niveau - 1] };
+    else if (c.type === 'atelier') img = { f: 's', c: S.atelier[Math.min(4, niveau) - 1] };
     else img = { f: 't', c: tuileBatiment(c.type, niveau) };
     if (c.chantier) img.echafaudage = true;
     return img;
@@ -43,6 +44,7 @@ export function imageCase(ile, x, y, t) {
 export function imageType(type, niveau = 1) {
   if (DECORS[type]) return { f: 's', c: S.decor[type] || S.fleurs };
   if (type === 'carriere') return { f: 's', c: S.carriere[Math.min(3, niveau) - 1] };
+  if (type === 'atelier') return { f: 's', c: S.atelier[Math.min(4, niveau) - 1] };
   return { f: 't', c: tuileBatiment(type, niveau) };
 }
 
@@ -437,7 +439,7 @@ export function creerRendu(toile) {
     rondRect(cx - l / 2, y, l, h, h / 2);
     ctx.stroke();
     const ic = h * 0.82;
-    image({ f: 't', c: ICONES[res] }, Math.round(cx - l / 2 + h * 0.12), Math.round(y + (h - ic) / 2), Math.round(cx - l / 2 + h * 0.12 + ic), Math.round(y + (h - ic) / 2 + ic));
+    image(res === 'pieces' ? { f: 's', c: S.piece } : { f: 't', c: ICONES[res] }, Math.round(cx - l / 2 + h * 0.12), Math.round(y + (h - ic) / 2), Math.round(cx - l / 2 + h * 0.12 + ic), Math.round(y + (h - ic) / 2 + ic));
     texte(String(q), cx + l * 0.2, y + h / 2 + dpr, h * 0.62, { couleur: '#1c2433', contour: plein ? '#ffd23f' : '#ffffff' });
     return rectCss(cx - l / 2, y, cx + l / 2, y + h);
   }

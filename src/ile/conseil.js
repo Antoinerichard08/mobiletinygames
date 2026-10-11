@@ -15,9 +15,10 @@ const duree = (ms) => {
   return s >= 60 ? `${Math.ceil(s / 60)} min` : `${s} s`;
 };
 const feminin = (nom) => /^(Cabane|Maison|Ferme|Carrière)/.test(nom);
-const article = (nom) => `${feminin(nom) ? 'la' : 'le'} ${nom.toLowerCase()}`;
+const voyelle = (nom) => /^[aeiouéèâ]/i.test(nom);
+const article = (nom) => `${voyelle(nom) ? 'l’' : feminin(nom) ? 'la ' : 'le '}${nom.toLowerCase()}`;
 const pronom = (nom) => (feminin(nom) ? 'la' : 'le');
-const aLa = (nom) => `${feminin(nom) ? 'à la' : 'au'} ${nom.toLowerCase()}`;
+const aLa = (nom) => `${voyelle(nom) ? 'à l’' : feminin(nom) ? 'à la ' : 'au '}${nom.toLowerCase()}`;
 
 /** Pour chaque île ouverte, chaque case : appelle f(ile, n, x, y, k, c). */
 function parcourir(e, f) {
@@ -60,7 +61,7 @@ export function conseil(e, etoiles, t, n = 0) {
   });
   if (recolte && recolte.part >= 0.3) {
     const def = BATIMENTS[recolte.c.type];
-    return { texte: `${recolte.q} ${NOMS_RESSOURCES[def.prod.res]} vous attend ${aLa(def.nom)}. Touchez-${pronom(def.nom)} pour le ramasser.`, cible: { genre: 'case', n: recolte.n, cle: recolte.cle } };
+    return { texte: `${recolte.q} ${NOMS_RESSOURCES[def.prod.res]} ${def.prod.res === 'pieces' && recolte.q > 1 ? 'vous attendent' : 'vous attend'} ${aLa(def.nom)}. Touchez-${pronom(def.nom)} pour le ramasser.`, cible: { genre: 'case', n: recolte.n, cle: recolte.cle } };
   }
 
   // 3. un bâtiment qui ne produit rien faute de voisin

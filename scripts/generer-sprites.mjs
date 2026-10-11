@@ -114,6 +114,57 @@ for (const [cx, cy, r] of [[5, 10, 2.6], [10.5, 8.5, 2.9], [8, 12.2, 2.2]]) {
 }
 point(7, 5, 9, 7, '#e85d5d'); point(7, 5, 4, 9, '#f2c94c'); // deux baies
 
+// Atelier du puzzle, quatre niveaux (rangée 5, colonnes 8 à 11), sur l'herbe : une pièce dorée sur la façade
+const ATELIER = {
+  o: '#3a2410', R: '#c8553a', r: '#8e3322', W: '#f1e3c3', w: '#d2bb8a', D: '#714114', d: '#4e2a0c',
+  G: '#f2b632', g: '#b37b00', B: '#8fc8ff', b: '#4f86ea', C: '#8a8f86', c: '#5d6159', U: '#4c7fd6', u: '#2a4f99',
+  Y: '#ffd84a', y: '#c89a10', F: '#e8433a', P: '#a65d25',
+};
+const ATELIERS = [
+  [ // niveau 1 : une petite maison
+    '................', '................', '................', '.....oooooo.....', '....oRRRRRRo....', '...oRRRRRRRRo...',
+    '..orrrrrrrrrro..', '...oWWWWWWWWo...', '...oW.G.WWWWo...', '...oWGGGWDDWo...', '...oWWGgWDdWo...', '...owwwwwDdwo...',
+    '...oooooooooo...', '................',
+  ],
+  [ // niveau 2 : plus large, une cheminée et une fenêtre
+    '..........cc....', '..........CC....', '.....ooooooCo....', '....oRRRRRRRRo...', '...oRRRRRRRRRRo..', '..orrrrrrrrrrrro.',
+    '...oWWWWWWWWWWo..', '...oW.G.WBbWWWo..', '...oWGGGWbBWDDo..', '...oWWGgWWWWDdo..', '...owwwwwwwwDdo..', '...oooooooooooo..',
+    '................', '................',
+  ],
+  [ // niveau 3 : un étage, toit bleu
+    '.......oooo.....', '......oUUUUo....', '.....oUUUUUUo...', '....ouuuuuuuuo..', '....oWBbWWBbWo..', '....oWbBWWbBWo..',
+    '...oUUUUUUUUUUo.', '..ouuuuuuuuuuuuo', '...oWW.G.WWWWo..', '...oWWGGGWWDDo..', '...oWWWGgWWDdo..', '...owwwwwwwDdo..',
+    '...ooooooooooo..', '................',
+  ],
+  [ // niveau 4 : toit doré et drapeau
+    '.......FFF......', '.......Fo.......', '.......oooo.....', '......oYYYYo....', '.....oYYYYYYo...', '....oyyyyyyyyo..',
+    '....oWBbWWBbWo..', '...oYYYYYYYYYYo.', '..oyyyyyyyyyyyyo', '...oWW.G.WWWWo..', '...oWWGGGWWDDo..', '...oWWWGgWWDdo..',
+    '...owwwwwwwDdo..', '...ooooooooooo..',
+  ],
+];
+ATELIERS.forEach((lignes, n) => {
+  herbe(8 + n, 5);
+  motif(8 + n, 5, 0, n === 3 ? 1 : 2, lignes, ATELIER);
+});
+// une pièce de puzzle (icône des récoltes et du compteur), sur fond transparent (rangée 5, colonne 12) :
+// un carré, un ergot rond en haut et à droite, une encoche à gauche, contour sombre et reflet
+{
+  const dans = (x, y) => {
+    const carre = x >= 2.5 && x <= 11.5 && y >= 3.5 && y <= 12.5;
+    const ergotHaut = Math.hypot(x - 7, y - 2.6) <= 2.1;
+    const ergotDroit = Math.hypot(x - 12.6, y - 8) <= 2.1;
+    const encoche = Math.hypot(x - 2.6, y - 8) <= 1.9;
+    return (carre || ergotHaut || ergotDroit) && !encoche;
+  };
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    if (!dans(x + 0.5, y + 0.5)) continue;
+    const bord = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !dans(x + dx + 0.5, y + dy + 0.5));
+    const ombre = !bord && !dans(x + 1.5, y + 1.5); // juste au-dessus du contour, en bas à droite
+    const reflet = !bord && !ombre && !dans(x - 0.5, y - 0.5); // juste sous le contour, en haut à gauche
+    point(12, 5, x, y, bord ? '#5a3a00' : ombre ? '#d88a00' : reflet ? '#ffe9a0' : '#ffc21a');
+  }
+}
+
 // ---------- Terrains et chantiers sur l'herbe (rangée 6) ----------
 const BOIS = { t: '#714114', T: '#a65d25', c: '#c8772c', s: '#593411' };
 function terreBattue(c, r) {

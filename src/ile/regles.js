@@ -16,7 +16,12 @@ import { aleaGraine } from '../core/outils.js';
 
 export const MINUTE = 60 * 1000;
 export const RESSOURCES = ['bois', 'pierre', 'ble'];
-export const NOMS_RESSOURCES = { bois: 'bois', pierre: 'pierre', ble: 'blé' };
+export const NOMS_RESSOURCES = { bois: 'bois', pierre: 'pierre', ble: 'blé', pieces: 'pièces de puzzle' };
+/**
+ * Ce qui se récolte sur l'île mais ne se range pas dans e.ressources : les pièces de puzzle (core/pieces.js),
+ * créditées par l'écran au moment du ramassage.
+ */
+export const RECOLTES_EXTERIEURES = ['pieces'];
 
 /** l × h : la place dont dispose l'île au départ ; surface : son nombre de cases de terre au départ. */
 export const ILES = [
@@ -80,8 +85,25 @@ export const BATIMENTS = {
     cout: [{ etoiles: 10, bois: 20, pierre: 30 }, { etoiles: 8, bois: 25, pierre: 35, ble: 15 }, { etoiles: 10, bois: 30, pierre: 40, ble: 20 }],
     desc: 'Le joyau de l’île ; aime les villages et la montagne',
   },
+  atelier: {
+    nom: 'Atelier du puzzle', base: 4, debloque: 15, duree: 1.5, unique: true, habitants: 1,
+    aime: { maison: 1, village: 2, puits: 1, fleurs: 1 },
+    // une pièce toutes les 8 h, 6 h, 4 h 48, puis 4 h ; réserve de 6, 8, 10, 12 pièces
+    prod: { res: 'pieces', periodes: [480, 360, 288, 240], plafonds: [6, 8, 10, 12] },
+    cout: [
+      { etoiles: 6, bois: 10, pierre: 6 },
+      { etoiles: 6, bois: 15, pierre: 10, ble: 6 },
+      { etoiles: 8, bois: 20, pierre: 15, ble: 10 },
+      { etoiles: 10, bois: 30, pierre: 20, ble: 15 },
+    ],
+    desc: 'Fabrique des pièces de puzzle, même appli fermée ; un seul sur l’archipel',
+  },
 };
-export const ORDRE_BATIMENTS = ['hameau', 'champ', 'maison', 'carriere', 'ferme', 'village', 'port', 'chateau'];
+export const ORDRE_BATIMENTS = ['hameau', 'champ', 'maison', 'carriere', 'ferme', 'atelier', 'village', 'port', 'chateau'];
+/** Ce qu'on gagne en temps de travail de l'Atelier (minutes) : une partie gagnée selon sa difficulté, une mission. */
+export const AVANCE_PARTIE = { facile: 30, moyen: 45, difficile: 60 };
+export const AVANCE_PARTIE_DEFAUT = 45;
+export const AVANCE_MISSION = 60;
 
 /** Décorations : posées tout de suite, une seule taille. */
 export const DECORS = {
@@ -375,10 +397,14 @@ export function peutPoser(ile, x, y, type) {
 export const dureeChantier = (type, versNiveau) => BATIMENTS[type].duree * (1 + (versNiveau - 1) * 0.5) * MINUTE;
 
 /** Pose un bâtiment : un chantier démarre. */
+/** Un bâtiment de ce type existe-t-il déjà (même en chantier) sur l'archipel ? */
+export const dejaConstruit = (e, type) => e.iles.some((ile) => Object.values(ile.cases).some((c) => c.type === type));
+
 export function construire(e, n, x, y, type, etoiles, payerEtoiles, t) {
   const ile = e.iles[n], def = BATIMENTS[type];
   if (!estDebloque(e, type)) return { ok: false, raison: 'pas-debloque' };
   if (!peutPoser(ile, x, y, type)) return { ok: false, raison: 'case' };
+  if (def.unique && dejaConstruit(e, type)) return { ok: false, raison: 'unique' };
   if (!batisseursLibres(e)) return { ok: false, raison: 'batisseurs' };
   if (!peutPayer(e, etoiles, def.cout[0])) return { ok: false, raison: 'cout', manque: manque(e, etoiles, def.cout[0]) };
   if (!payer(e, def.cout[0], payerEtoiles)) return { ok: false, raison: 'cout' };
@@ -606,8 +632,15 @@ export function produit(ile, x, y) {
   return false;
 }
 
-export const periode = (c) => (BATIMENTS[c.type].prod.minutes * MINUTE) / c.niveau;
-export const plafond = (c) => PLAFOND_PAR_NIVEAU * c.niveau;
+/** Temps pour produire une unité (ms) ; l'Atelier a sa propre table, les autres vont plus vite à chaque niveau. */
+export function periode(c) {
+  const p = BATIMENTS[c.type].prod;
+  return p.periodes ? p.periodes[Math.min(p.periodes.length, c.niveau) - 1] * MINUTE : (p.minutes * MINUTE) / c.niveau;
+}
+export function plafond(c) {
+  const p = BATIMENTS[c.type].prod;
+  return p.plafonds ? p.plafonds[Math.min(p.plafonds.length, c.niveau) - 1] : PLAFOND_PAR_NIVEAU * c.niveau;
+}
 
 /** Stock prêt à ramasser. */
 export function stock(ile, x, y, t) {
@@ -622,11 +655,35 @@ export function ramasser(e, n, x, y, t) {
   const q = stock(ile, x, y, t);
   if (!q) return { res: null, n: 0 };
   const res = BATIMENTS[c.type].prod.res;
-  e.ressources[res] += q;
+  if (!RECOLTES_EXTERIEURES.includes(res)) e.ressources[res] += q;
+  if (c.type === 'atelier') {
+    // l'Atelier garde le temps gagné au-delà de sa réserve (jusqu'à une réserve de plus) : rien ne se perd
+    c.depuis = Math.max(c.depuis + q * periode(c), t - plafond(c) * periode(c));
+    return { res, n: q };
+  }
   // on garde l'avancement de l'unité en cours (sauf si le stock était plein)
   const plein = q >= plafond(c);
   c.depuis = plein ? t : c.depuis + q * periode(c);
   return { res, n: q };
+}
+
+/** L'Atelier du puzzle de l'archipel (terminé), ou null. */
+export function atelier(e) {
+  for (const ile of e.iles) for (const [k, c] of Object.entries(ile.cases)) if (c.type === 'atelier' && c.niveau > 0) return { ile, cle: k, c };
+  return null;
+}
+/**
+ * Fait avancer le temps de l'Atelier (une partie gagnée, une mission…). Le temps au-delà de la réserve
+ * pleine est gardé, jusqu'à une réserve de plus. Renvoie les minutes vraiment gagnées (0 sans Atelier).
+ */
+export function avancerAtelier(e, minutes, t) {
+  const a = atelier(e);
+  if (!a || !(minutes > 0)) return 0;
+  const { c } = a, p = periode(c);
+  const limite = t - 2 * plafond(c) * p; // au plus deux réserves de travail d'avance
+  const avant = c.depuis;
+  c.depuis = Math.max(limite, c.depuis - minutes * MINUTE);
+  return Math.round((avant - c.depuis) / MINUTE);
 }
 
 /** Tout ramasser sur toutes les îles. Renvoie les totaux par ressource. */

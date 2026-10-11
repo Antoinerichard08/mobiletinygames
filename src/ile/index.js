@@ -7,6 +7,7 @@
 import { $, $$, chargerStyle, pluriel } from '../core/outils.js';
 import { lire, ecrire } from '../core/stockage.js';
 import { solde, depenserEtoiles, ajouterEtoiles } from '../core/etoiles.js';
+import { soldePieces, ajouterPieces } from '../core/pieces.js';
 import { revenir } from '../core/navigation.js';
 import { mouvementReduit } from '../core/mouvement.js';
 import { T, S, tuile, sprite, ilot } from '../core/tuiles.js';
@@ -18,7 +19,7 @@ import {
   plafond, periode, ramasser, toutRamasser, peutAmenager, amenager, acheterCase, coutCase, casesAchetables, peutAcheter, actualiser, beauteTotale,
   ilesOuvertes, estDebloque, apercu, habitants, peutPayer, manque, niveauMax, pointsCase, ouvrirTout, batisseurs,
   batisseursLibres, chantiers, prixBatisseur, engagerBatisseur, prixFinir, finir, peutDeplacer, apercuDeplacement,
-  deplacer, ramasserTresor, paliers, progressionIle, dureeChantier, voisinsDe,
+  deplacer, ramasserTresor, paliers, progressionIle, dureeChantier, voisinsDe, dejaConstruit,
 } from './regles.js';
 import { conseil } from './conseil.js';
 import { camera, versEcran, versMonde, borner, zoomAutour, zoomPourVoir, centrePourVoir, entre } from './camera.js';
@@ -83,7 +84,9 @@ function sauver() {
 // ---------- Petits morceaux d'affichage ----------
 
 function icone(res, taille = 20) {
-  return res === 'etoiles' ? `<span class="ic-etoile" style="font-size:${taille}px">${ICONE.etoile}</span>` : tuile(ICONES_RES[res], taille);
+  if (res === 'etoiles') return `<span class="ic-etoile" style="font-size:${taille}px">${ICONE.etoile}</span>`;
+  if (res === 'pieces') return sprite(S.piece, taille);
+  return tuile(ICONES_RES[res], taille);
 }
 /** Coût sous forme de pastilles ; ce qui manque est en rouge. */
 function coutHtml(cout, taille = 20) {
@@ -357,7 +360,10 @@ let dernieresRessources = null;
 function majHud() {
   if (!scene) return;
   // ressources (en haut à droite), avec un petit saut quand elles montent
-  const valeurs = { etoiles: etoilesTexte(), ...Object.fromEntries(RESSOURCES.map((r) => [r, modeDev() ? '∞' : String(E.ressources[r])])) };
+  const valeurs = {
+    etoiles: etoilesTexte(), ...Object.fromEntries(RESSOURCES.map((r) => [r, modeDev() ? '∞' : String(E.ressources[r])])),
+    pieces: modeDev() ? '∞' : String(soldePieces()),
+  };
   for (const [r, v] of Object.entries(valeurs)) {
     const el = $(`.capsule[data-res="${r}"] b`, scene);
     if (!el || el.textContent === v) continue;
@@ -409,6 +415,7 @@ function capsules() {
     capsule('bois', tuile(ICONES_RES.bois, 46)),
     capsule('pierre', tuile(ICONES_RES.pierre, 46)),
     capsule('ble', tuile(ICONES_RES.ble, 46)),
+    capsule('pieces', sprite(S.piece, 36)),
     capsule('habitants', sprite(S.habitant(4, 0), 34), 'petite'),
   ].join('');
 }
@@ -618,6 +625,7 @@ async function recolter(n, k) {
   const ile = E.iles[n], [x, y] = coord(k);
   const { res, n: q } = ramasser(E, n, x, y, maintenant());
   if (!q) return;
+  if (res === 'pieces') ajouterPieces(q, 'atelier');
   sauver();
   vibrer(10);
   const c = centreCase(ile, n, x, y);
@@ -640,6 +648,7 @@ async function toutRecolter() {
   }
   const total = toutRamasser(E, t);
   if (!Object.keys(total).length) return;
+  if (total.pieces) ajouterPieces(total.pieces, 'atelier');
   sauver();
   vibrer(15);
   dire(`Récolte : ${Object.entries(total).map(([r, q]) => `+${q} ${NOMS_RESSOURCES[r]}`).join(', ')} !`);
@@ -732,6 +741,7 @@ async function commencerPose(genre, type, cible = null) {
   if (!peutPayer(E, solde(), cout)) {
     return dire(`Il manque ${texteManque(manque(E, solde(), cout))}. ${cout.etoiles && manque(E, solde(), cout).etoiles ? 'Jouez une partie pour gagner des étoiles.' : 'Récoltez ou aménagez l’île.'}`);
   }
+  if (BATIMENTS[type]?.unique && dejaConstruit(E, type)) return dire(`« ${nomDe(type)} » est déjà sur l’île : il n’y en a qu’un.`);
   if (genre === 'construire' && !batisseursLibres(E)) return fenetreBatisseurs(true);
   // l'île visée : celle de la case touchée, sinon celle qu'on regarde ; s'il n'y a plus de place, une autre île ouverte
   let n = cible?.n ?? E.active;
@@ -1109,6 +1119,12 @@ async function ouvrirBoutique(cible = null) {
         const bat = BATIMENTS[type], def = bat || DECORS[type], ouvert = estDebloque(E, type);
         const cout = bat ? bat.cout[0] : def.cout;
         const nb = E.iles.reduce((s, ile) => s + Object.values(ile.cases).filter((c) => c.type === type).length, 0);
+        if (bat?.unique && nb) {
+          cartes += `<button class="carte construit" data-unique="${type}">
+            <span class="carte-image">${imageHtml(imageType(type), 84)}</span><span class="carte-nom">${def.nom}</span>
+            <span class="carte-desc">${def.desc}</span><span class="carte-prix"><b>Déjà sur l’île</b></span></button>`;
+          continue;
+        }
         const infos = bat
           ? [`${ICONE.etoile}<span>Beauté ${bat.base}+</span>`, `${ICONE.horloge}<span>${duree(dureeChantier(type, 1))}</span>`]
           : [`${ICONE.etoile}<span>Beauté ${def.beaute}+</span>`];
@@ -1156,6 +1172,8 @@ async function ouvrirBoutique(cible = null) {
     if (d) { const r = $('.cartes', fond); r.scrollBy({ left: Number(d.dataset.defiler) * r.clientWidth * 0.8, behavior: reduit() ? 'auto' : 'smooth' }); return; }
     const s = e.target.closest('[data-special]');
     if (s) { ui.fermerFenetre(''); ui.apresBoutique = s.dataset.special; return; }
+    const unique = e.target.closest('[data-unique]');
+    if (unique) return dire(`« ${nomDe(unique.dataset.unique)} » est déjà sur l’île : touchez-le pour l’améliorer.`);
     const carte = e.target.closest('.carte[data-type]');
     if (!carte) return;
     const { genre, type } = carte.dataset;
@@ -1356,6 +1374,7 @@ function brancher() {
     bois: ['Le bois vient des cabanes de bûcheron (près d’une forêt), des forêts qu’on abat et des buissons.', null],
     pierre: ['La pierre vient de la carrière (à côté des rochers), des rochers qu’on casse et des cailloux.', null],
     ble: ['Le blé vient des champs et des fermes. Touchez leur bulle pour le ramasser.', null],
+    pieces: ['Les pièces de puzzle viennent de l’Atelier du puzzle. Chaque partie gagnée et chaque mission le font avancer, et l’Aventure en offre tous les 10 niveaux. On les place dans le jeu Puzzle.', null],
     habitants: ['Les habitants vivent dans les maisons, les cabanes, les fermes et les villages. Ils travaillent tout seuls.', null],
   };
   $('#ile-res', scene).addEventListener('click', (e) => {
