@@ -149,3 +149,33 @@ test('Aventure : un lot de 4 pièces tous les 10 niveaux, la première fois seul
   assert.equal(r2.pieces, 0, 'rejouer le niveau ne redonne pas le lot');
   assert.equal(soldePieces(), 4);
 });
+
+// ---------- Catalogue des tableaux ----------
+
+test('catalogue : des tableaux CC0 vérifiés, complets, avec leur fichier et leur vignette', async () => {
+  const { readFileSync, existsSync } = await import('node:fs');
+  const catalogue = JSON.parse(readFileSync(new URL('../data/catalogue-puzzles.json', import.meta.url), 'utf8'));
+  const ids = new Set();
+  for (const t of catalogue.images) {
+    assert.ok(!ids.has(t.id), `identifiant unique : ${t.id}`);
+    ids.add(t.id);
+    for (const champ of ['titre', 'artiste', 'date', 'licence', 'source', 'page', 'fichier']) assert.ok(t[champ], `${t.id} : ${champ}`);
+    assert.match(t.licence, /^CC0/, `${t.id} : licence CC0`);
+    assert.match(t.page, /^https:\/\/commons\.wikimedia\.org\/wiki\/File:/);
+    assert.ok(['petit', 'moyen', 'grand'].includes(t.taille));
+    assert.ok(existsSync(new URL(`../${t.fichier}`, import.meta.url)), `${t.fichier} présent`);
+    assert.match(t.vignette, /^data:image\/jpeg;base64,/);
+    assert.ok(t.vignette.length < 8000, 'vignette minuscule');
+    assert.ok(t.largeur > 0 && t.hauteur > 0);
+  }
+  const parTaille = (x) => catalogue.images.filter((t) => t.taille === x).length;
+  assert.ok(parTaille('petit') >= 3 && parTaille('moyen') >= 1 && parTaille('grand') >= 1, 'de quoi remplir les 5 emplacements');
+});
+
+test('service worker : le catalogue est gardé hors ligne, les tableaux sont téléchargés au besoin', async () => {
+  const { listerFichiersAppli, listerImagesPuzzles } = await import('../scripts/fichiers-appli.mjs');
+  const appli = listerFichiersAppli();
+  assert.ok(appli.includes('data/catalogue-puzzles.json'));
+  assert.ok(!appli.some((f) => f.startsWith('assets/puzzles/')), 'les 8 Mo de tableaux ne sont pas mis en cache d’avance');
+  assert.equal(listerImagesPuzzles().length, 27);
+});

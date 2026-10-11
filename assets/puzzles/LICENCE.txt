@@ -1,0 +1,12 @@
+Tableaux du jeu Puzzle
+======================
+
+Toutes ces images sont des reproductions d'œuvres du domaine public, publiées par
+The Metropolitan Museum of Art (New York) sous licence Creative Commons CC0 1.0
+(« Open Access ») et récupérées sur Wikimedia Commons.
+
+  https://creativecommons.org/publicdomain/zero/1.0/deed.fr
+  https://www.metmuseum.org/policies/image-resources
+
+La liste complète (titre, artiste, date, page d'origine) est dans data/catalogue-puzzles.json.
+Elle est construite par scripts/telecharger-puzzles.mjs, qui vérifie la licence de chaque image.

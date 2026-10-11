@@ -25,7 +25,16 @@ export function listerFichiersAppli() {
       ...parcourir('assets/fonts', (n) => n.endsWith('.woff2')),
       ...parcourir('assets/icons', (n) => n.endsWith('.png')),
       ...parcourir('assets/ile', (n) => n.endsWith('.png')),
+      ...parcourir('data', (n) => n.endsWith('.json')),
       ...parcourir('src', () => true),
     ].sort(),
   ];
+}
+
+/**
+ * Les tableaux du jeu Puzzle : publiés avec l'appli mais PAS mis en cache d'avance (8 Mo) ; chaque téléphone
+ * télécharge seulement ceux dont il a besoin, puis les garde (src/games/puzzle/images.js).
+ */
+export function listerImagesPuzzles() {
+  return parcourir('assets/puzzles', (n) => n.endsWith('.jpg')).sort();
 }
