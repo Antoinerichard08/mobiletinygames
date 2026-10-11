@@ -124,7 +124,11 @@ https://antoinerichard08.github.io/mobiletinygames/?dev=1 : étoiles infinies (a
 l'Aventure et des Bulles ouverts, bonus des Bulles gratuits, tout débloqué sur l'île avec des ressources pleines, pièces de puzzle illimitées.
 Le réglage est **mémorisé sur ce téléphone seulement** (les autres ne sont pas touchés). Pour revenir à la normale :
 le bouton « Quitter ce mode » du bandeau de l'accueil, ou `?dev=0` dans l'adresse. Les vraies étoiles gagnées
-entre-temps sont conservées.
+entre-temps sont conservées, tout comme les vraies ressources de l'île ; les puzzles du mode développeur sont rangés à part.
+
+> **Pour le moment, ce mode est toujours actif**, sur tous les téléphones (`DEV_TOUJOURS` dans `src/core/config.js`) :
+> `?dev=0` n'y change rien et le bouton « Quitter ce mode » est masqué. Pour revenir à la normale pour tout le monde :
+> mettre `false`, puis publier une nouvelle version.
 
 ### Lancer les tests
 

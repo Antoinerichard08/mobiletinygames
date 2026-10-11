@@ -1,10 +1,17 @@
 // Réglages globaux.
 // Mode développeur : crédits illimités (étoiles, ressources de l'île), tous les niveaux et bâtiments ouverts.
-// Il s'active sur UN téléphone en ouvrant l'appli avec « ?dev=1 » à la fin de l'adresse, et se coupe avec « ?dev=0 »
-// (ou le bouton de l'accueil). Les autres téléphones (celui de maman) ne sont pas concernés.
+// Il s'active en ouvrant l'appli avec « ?dev=1 » à la fin de l'adresse, et se coupe avec « ?dev=0 »
+// (ou le bouton de l'accueil) ; le choix est mémorisé sur le téléphone.
 import { lire, ecrire } from './stockage.js';
 
+/**
+ * POUR LE MOMENT, le mode développeur est TOUJOURS actif, sur tous les téléphones (tests plus faciles) :
+ * « ?dev=0 » n'y change rien. Mettre false pour revenir à la normale. Les tests Node restent en mode normal.
+ */
+export const DEV_TOUJOURS = true;
+
 export function modeDev() {
+  if (DEV_TOUJOURS && typeof document !== 'undefined') return true;
   return lire('dev', false) === true;
 }
 

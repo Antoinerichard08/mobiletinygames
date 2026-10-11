@@ -10,7 +10,7 @@ import { $ } from './core/outils.js';
 import { victoires } from './core/stockage.js';
 import { fermerDialogue, demander } from './core/dialogue.js';
 import { solde } from './core/etoiles.js';
-import { modeDev, definirModeDev, lireModeDevDansAdresse, ETOILES_DEV } from './core/config.js';
+import { modeDev, definirModeDev, lireModeDevDansAdresse, ETOILES_DEV, DEV_TOUJOURS } from './core/config.js';
 import { ecouter } from './core/evenements.js';
 import { definirNavigation } from './core/navigation.js';
 import { animer, apparaitre, mouvementReduit, pop } from './core/mouvement.js';
@@ -145,7 +145,7 @@ function afficherAccueil() {
         </div>
         <span class="star-chip" aria-label="Vos étoiles">★ <b>${soldeTexte()}</b></span>
       </div>
-      ${modeDev() ? '<div class="dev-bandeau"><span><b>Mode développeur</b> : étoiles et ressources illimitées, tout est ouvert.</span><button class="btn" id="dev-quitter">Quitter ce mode</button></div>' : ''}
+      ${modeDev() ? `<div class="dev-bandeau"><span><b>Mode développeur</b> : étoiles et ressources illimitées, tout est ouvert.</span>${DEV_TOUJOURS ? '' : '<button class="btn" id="dev-quitter">Quitter ce mode</button>'}</div>` : ''}
       <div class="install-zone">
         <button class="btn primary install" id="install" hidden>Installer sur le téléphone</button>
         <button class="btn install-aide" id="install-aide" hidden>Comment installer l’appli sur le téléphone ?</button>
