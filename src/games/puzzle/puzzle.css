@@ -57,6 +57,15 @@
   overflow-y: auto; padding: 6px; border-radius: 16px; background: var(--surface-2); border: 2px dashed var(--line); min-height: 120px;
 }
 .pz-piece { position: relative; flex: none; touch-action: none; cursor: grab; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .35)); }
+/* la réserve défile au doigt dans un sens, et l'on soulève une pièce dans l'autre :
+   à la verticale, un bandeau qui défile de côté (on monte la pièce vers le tableau) ;
+   à l'horizontale, une colonne qui défile de haut en bas (on tire la pièce vers la gauche) */
+.pz-assemblage:not(.paysage) .pz-reserve {
+  display: grid; grid-auto-flow: column; grid-template-rows: repeat(var(--rangs, 2), auto);
+  justify-content: start; align-items: center; overflow-x: auto; overflow-y: hidden;
+}
+.pz-assemblage:not(.paysage) .pz-reserve .pz-piece { touch-action: pan-x; }
+.pz-assemblage.paysage .pz-reserve .pz-piece { touch-action: pan-y; }
 .pz-piece canvas { display: block; width: 100%; height: 100%; pointer-events: none; }
 .pz-piece.choisie { filter: drop-shadow(0 0 0 #ffd23f) drop-shadow(0 0 6px #ffd23f) drop-shadow(0 0 3px #ffd23f); transform: scale(1.06); z-index: 2; }
 .pz-piece.volante { position: fixed; z-index: 100; cursor: grabbing; filter: drop-shadow(0 8px 10px rgba(0, 0, 0, .4)); }

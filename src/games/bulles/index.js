@@ -49,6 +49,7 @@ let anim = null, dernier = 0;
 let prochain = null;
 let dejaFabrique = null; // le dernier niveau fabriqué, pour rejouer sans attendre
 let surRedim = null;
+let observateur = null; // surveille la hauteur du score et des commandes (styles chargés, message plus long…)
 
 // ---------- Hasard reproductible (pour qu'« Annuler » redonne les mêmes bulles) ----------
 function hasard() {
@@ -119,16 +120,38 @@ async function commencer(n) {
 
 const px = (u) => u * echelle;
 
-function dimensionner() {
+/** La largeur du plateau pour que tout tienne dans l'écran : le score au-dessus, les commandes en dessous. */
+function largeurIdeale() {
   const zone = $('.bl-zone', racine);
   const paysage = matchMedia('(orientation: landscape) and (max-height: 560px)').matches;
-  let largeur = Math.min(zone.clientWidth || 340, 560);
-  if (paysage) largeur = Math.min(largeur, ((window.innerHeight - 24) * LARGEUR) / HAUTEUR);
-  else largeur = Math.min(largeur, ((window.innerHeight * 0.66) * LARGEUR) / HAUTEUR);
+  const haut = zone.getBoundingClientRect().top + window.scrollY;
+  // à la verticale, les bonus et les boutons sont sous le plateau ; à l'horizontale, à côté
+  const cote = $('.bl-side', racine);
+  const dessous = paysage ? 0 : cote.offsetHeight + 10;
+  // et la marge de la page sous le dernier bouton (sinon l'écran défile de quelques pixels)
+  let marge = 0;
+  for (let n = zone.parentElement; n && n !== document.documentElement; n = n.parentElement) {
+    const s = getComputedStyle(n);
+    marge += (parseFloat(s.paddingBottom) || 0) + (parseFloat(s.marginBottom) || 0) + (parseFloat(s.borderBottomWidth) || 0);
+  }
+  const hauteurDispo = window.innerHeight - haut - dessous - marge - 4;
+  return Math.min(zone.clientWidth || 340, 560, Math.max(200, (hauteurDispo * LARGEUR) / HAUTEUR));
+}
+/** Recalcule le plateau si la place a changé (score et commandes dessinés, message plus long…). */
+function ajuster() {
+  if (!racine || !toile) return;
+  if (Math.abs(largeurIdeale() - parseFloat(toile.style.width || 0)) < 2) return;
+  dimensionner();
+  dessiner();
+}
+
+function dimensionner() {
+  const largeur = largeurIdeale();
   echelle = largeur / LARGEUR;
   dpr = Math.min(2, window.devicePixelRatio || 1);
   toile.style.width = `${largeur}px`;
   toile.style.height = `${HAUTEUR * echelle}px`;
+  $('.bl-zone', racine).style.setProperty('--bl-l', `${largeur}px`);
   toile.width = Math.round(largeur * dpr);
   toile.height = Math.round(HAUTEUR * echelle * dpr);
   fond = fabriquerFond(largeur, HAUTEUR * echelle, dpr);
@@ -480,6 +503,7 @@ async function atterrir() {
   const estBonus = Boolean(b.tir) && S.bonusEnCours;
   if (!estBonus) S.utilises++;
   S.bonusEnCours = false;
+  S.achete = false;
   const c0 = cible ? centre(cible.r, cible.c) : { x: LARGEUR / 2, y: 3 };
   ev.eclatees.forEach(({ r, c, b: v }) => {
     const q = centre(r, c);
@@ -733,6 +757,7 @@ function echanger() {
 
 function annuler() {
   if (enCours || !S || !S.historique.length) return dire('Rien à annuler pour l’instant.');
+  if (S.achete) return dire('Tirez d’abord votre bulle spéciale : elle est déjà payée.');
   const historique = S.historique.slice(0, -1);
   const avant = JSON.parse(S.historique[S.historique.length - 1]);
   S = { ...avant, historique, annulations: (S.annulations || 0) + 1, indices: S.indices };
@@ -768,6 +793,7 @@ async function utiliserBonus(type) {
   S.reserve = S.courante;
   S.courante = { tir: type };
   S.bonusEnCours = true;
+  S.achete = true; // payée : « Annuler » ne doit pas la faire disparaître
   sauver();
   dessinerHud();
   dire(`${def.nom} prête ! ${def.aide}`);
@@ -836,9 +862,9 @@ function construire() {
       <div class="bl-zone">
         <canvas class="bl-toile" aria-label="Plateau de bonbons. Posez le doigt pour viser, levez-le pour tirer."></canvas>
         <p class="bl-chargement" id="bl-chargement" hidden>Je prépare les bonbons…</p>
+        <p class="status" id="bl-status" aria-live="polite"></p>
       </div>
       <div class="bl-side">
-        <p class="status" id="bl-status" aria-live="polite"></p>
         <div class="bl-boosters" id="bl-bonus"></div>
         <div class="tools">
           <button class="btn" id="bl-annuler">Annuler</button>
@@ -880,6 +906,9 @@ function construire() {
     if (b) utiliserBonus(b.dataset.bonus);
   });
   surRedim = () => { if (racine) { dimensionner(); dessiner(); } };
+  observateur = new ResizeObserver(() => ajuster());
+  observateur.observe($('#bl-hud', racine));
+  observateur.observe($('.bl-side', racine));
   window.addEventListener('resize', surRedim);
 }
 
@@ -927,6 +956,7 @@ export default {
     anim = null;
     fermerPanneaux();
     window.removeEventListener('resize', surRedim);
+    observateur?.disconnect();
     racine = null;
     ctx = null;
   },

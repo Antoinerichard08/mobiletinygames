@@ -18,7 +18,7 @@ import { chargerCatalogue, obtenirImage, imageGardee } from './images.js';
 
 chargerStyle(new URL('./puzzle.css', import.meta.url));
 
-const CLE = 'puzzle';
+const cleEtat = () => (modeDev() ? 'puzzle.dev' : 'puzzle'); // le mode développeur a ses puzzles à part
 let racine = null;
 let catalogue = null;
 let etat = null;
@@ -27,14 +27,14 @@ let urls = new Map(); // id → adresse locale de l'image nette (objet Blob)
 let surRedim = null;
 let assemblage = null; // l'assemblage en cours (voir ouvrirAssemblage)
 
-const sauver = () => ecrire(CLE, etat);
+const sauver = () => ecrire(cleEtat(), etat);
 const tableau = (id) => catalogue.images.find((t) => t.id === id);
 const icone = (taille = 26) => sprite(S.piece, taille);
 const soldeTexte = () => (modeDev() ? '∞' : String(soldePieces()));
 
 async function charger() {
   catalogue = await chargerCatalogue();
-  etat = lire(CLE, null);
+  etat = lire(cleEtat(), null);
   // un tableau retiré du catalogue (nouvelle version) est remplacé sans rien perdre des pièces placées
   if (!etat || !etat.emplacements) etat = etatNeuf(catalogue);
   etat.assemblages ||= {};
@@ -135,9 +135,12 @@ function placer(i, combien) {
   pop($('.pz-barre', neuf), 1.06);
   $('.pz-solde b', racine).textContent = soldeTexte();
   $$('.pz-carte', racine).forEach((c) => {
-    // le nombre de pièces disponibles a changé : on met à jour les autres boutons
-    const j = Number(c.dataset.i);
-    if (j !== i && !pret(etat.emplacements[j])) c.outerHTML = carte(etat.emplacements[j], j);
+    // le nombre de pièces disponibles a changé : on met à jour les boutons des autres cartes (sans les redessiner)
+    const j = Number(c.dataset.i), ej = etat.emplacements[j];
+    if (j === i || pret(ej)) return;
+    c.querySelectorAll('[data-action]').forEach((b) => { b.disabled = soldePieces() < 1; });
+    const tout = $('[data-action="tout"]', c);
+    if (tout) tout.textContent = `Placer ${Math.max(1, Math.min(manquantes(ej), modeDev() ? manquantes(ej) : soldePieces()))}`;
   });
   etat.emplacements.forEach((x, j) => montrerNette(j, x.investies > 0));
   dire(pret(e)
@@ -274,7 +277,10 @@ function dessinerAssemblage() {
     g.stroke();
   }
   const plateau = $('.pz-plateau', racine), reserve = $('.pz-reserve', racine);
-  reserve.style.maxHeight = `${Math.max(130, M.paysage ? M.hauteurDispo : M.hauteurDispo - M.h - 34)}px`;
+  const hauteurReserve = Math.max(130, M.paysage ? M.hauteurDispo : M.hauteurDispo - M.h - 34);
+  reserve.style.maxHeight = `${hauteurReserve}px`;
+  // à la verticale, la réserve est un bandeau qui défile de côté (le doigt monte pour soulever une pièce)
+  if (!M.paysage) reserve.style.setProperty('--rangs', String(Math.max(1, Math.min(3, Math.floor((hauteurReserve - 16) / (M.ch + 2 * M.m + 2))))));
   for (const k of a.places) poserSurPlateau(creerPiece(k, M), k, false);
   for (const k of a.ordre) if (!a.places.includes(k)) reserve.append(creerPiece(k, M));
   majCompte();
@@ -310,11 +316,19 @@ function placerPiece(el, k, depuis = null) {
   majCompte();
   dire('');
   try { navigator.vibrate?.(12); } catch { /* rien */ }
-  if (a.places.length === a.n) setTimeout(finir, mouvementReduit() ? 0 : 350);
+  if (a.places.length === a.n) {
+    // c'est gagné : on l'enregistre tout de suite (rien ne se perd si l'on quitte pendant la révélation)
+    a.fini = true;
+    $('#pz-annuler', racine).disabled = true;
+    terminer(etat, a.i, catalogue);
+    sauver();
+    setTimeout(() => finir(a), mouvementReduit() ? 0 : 350);
+  }
 }
 
 function annuler() {
   const a = assemblage;
+  if (!a || a.fini) return;
   const k = a.places.pop();
   if (k === undefined) return;
   sauver();
@@ -340,6 +354,7 @@ function brancherGestes(plateau, reserve) {
     ev.preventDefault();
     const r = el.getBoundingClientRect();
     tenue = { el, k: Number(el.dataset.k), dx: ev.clientX - r.left, dy: ev.clientY - r.top, x0: ev.clientX, y0: ev.clientY, bouge: false, origine: r };
+    a.tenue = true;
     // pendant le geste, on écoute toute la page : la pièce quitte la réserve pour suivre le doigt
     document.addEventListener('pointermove', bouger);
     document.addEventListener('pointerup', lacher);
@@ -349,6 +364,9 @@ function brancherGestes(plateau, reserve) {
     if (!tenue) return;
     if (!tenue.bouge && Math.hypot(ev.clientX - tenue.x0, ev.clientY - tenue.y0) < 8) return;
     if (!tenue.bouge) {
+      // un geste dans le sens où la réserve défile la fait défiler (le navigateur s'en charge) : on ne soulève pas la pièce
+      const dx = Math.abs(ev.clientX - tenue.x0), dy = Math.abs(ev.clientY - tenue.y0);
+      if (a.M.paysage ? dy > dx : dx > dy) return;
       tenue.bouge = true;
       tenue.el.classList.add('volante');
       document.body.append(tenue.el);
@@ -360,10 +378,14 @@ function brancherGestes(plateau, reserve) {
     document.removeEventListener('pointermove', bouger);
     document.removeEventListener('pointerup', lacher);
     document.removeEventListener('pointercancel', lacher);
+    a.tenue = false;
     if (!tenue) return;
     const { el, k, bouge } = tenue;
     tenue = null;
-    if (!bouge) return choisir(el, k); // un simple toucher
+    if (!bouge) {
+      if (ev.type === 'pointerup') choisir(el, k); // un simple toucher (pas un défilement de la réserve)
+      return redessinerSiBesoin();
+    }
     // où est le coin de la case de la pièce ?
     const M = a.M, r = el.getBoundingClientRect(), pr = plateau.getBoundingClientRect();
     const x = (r.left + M.m - pr.left) / M.cw, y = (r.top + M.m - pr.top) / M.ch;
@@ -379,6 +401,13 @@ function brancherGestes(plateau, reserve) {
       animer(el, [{ transform: `translate(${r.left - el.getBoundingClientRect().left}px, ${r.top - el.getBoundingClientRect().top}px)` }, { transform: 'none' }], { duration: 300 });
       if (Math.hypot(x - c, y - l) < 3 && caseDe(ev.clientX, ev.clientY).dedans) dire('Pas tout à fait : essayez une autre place.');
     }
+    redessinerSiBesoin();
+  };
+  // l'écran a changé de taille pendant le geste : on redessine maintenant que la pièce est posée
+  const redessinerSiBesoin = () => {
+    if (!a.redessiner || assemblage !== a || !racine) return;
+    a.redessiner = false;
+    dessinerAssemblage();
   };
   // une pièce choisie, puis un toucher sur le tableau
   plateau.addEventListener('click', (ev) => {
@@ -405,8 +434,8 @@ function choisir(el, k) {
   dire('Touchez maintenant sa place sur le tableau.');
 }
 
-async function finir() {
-  const a = assemblage;
+async function finir(a) {
+  if (assemblage !== a || !racine) return; // on a déjà quitté l'assemblage
   // le tableau se révèle : les découpes s'effacent
   const plateau = $('.pz-plateau', racine);
   const revele = document.createElement('img');
@@ -415,14 +444,14 @@ async function finir() {
   revele.alt = a.t.titre;
   plateau.append(revele);
   await animer(revele, [{ opacity: 0, filter: 'brightness(1.4)' }, { opacity: 1, filter: 'brightness(1)' }], { duration: 1200, fill: 'forwards' });
+  if (assemblage !== a || !racine) return;
   $$('.pz-piece', plateau).forEach((p) => p.remove());
-  terminer(etat, a.i, catalogue);
-  sauver();
   const choix = await demander({
     titre: 'Bravo, le tableau est terminé !',
     texte: `« ${a.t.titre} », ${a.t.artiste}, ${a.t.date}.\nIl rejoint votre bibliothèque. Un nouveau puzzle vous attend à sa place.`,
     oui: 'Voir la bibliothèque', non: 'Retour aux puzzles',
   });
+  if (assemblage !== a || !racine) return;
   assemblage = null;
   if (choix) dessinerBibliotheque(); else dessinerAccueil();
 }
@@ -484,7 +513,7 @@ export default {
   icone: `<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="4" width="56" height="56" rx="12" fill="#2f7ae5"/><path d="M12 22h10a5 5 0 1 1 10 0h10v10a5 5 0 1 1 0 10v10H12V42a5 5 0 1 0 0-10z" fill="#ffc21a" stroke="#5a3a00" stroke-width="2.5" stroke-linejoin="round"/><path d="M42 12h10v10H42z" fill="#8fe06a" stroke="#1d5a0a" stroke-width="2.5"/></svg>`,
 
   resume() {
-    const e = lire(CLE, null);
+    const e = lire(cleEtat(), null);
     if (!e?.emplacements) return 'Reconstituez de beaux tableaux';
     const prets = e.emplacements.filter((x) => x.investies >= TAILLES[x.taille]).length;
     if (prets) return prets > 1 ? `${prets} tableaux prêts à assembler` : 'Un tableau prêt à assembler';
@@ -497,7 +526,11 @@ export default {
     await charger();
     if (!racine) return;
     dessinerAccueil();
-    surRedim = () => { if (vue === 'assemblage' && assemblage && racine) dessinerAssemblage(); };
+    surRedim = () => {
+    if (vue !== 'assemblage' || !assemblage || !racine) return;
+    if (assemblage.tenue) assemblage.redessiner = true; // une pièce est au bout du doigt : on attend qu'elle soit lâchée
+    else dessinerAssemblage();
+  };
     window.addEventListener('resize', surRedim);
   },
 

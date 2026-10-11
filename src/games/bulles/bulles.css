@@ -53,6 +53,16 @@
   color: #fff; text-shadow: 0 2px 0 #4A1E7A; background: rgba(74, 43, 168, .45); border-radius: 22px;
 }
 .bl-side { display: flex; flex-direction: column; gap: 10px; }
+/* les messages s'affichent sur le plateau, dans la bande libre entre la ligne pointillée et le lanceur */
+.bl-zone .status {
+  position: absolute; left: 50%; top: 70%; transform: translate(-50%, -50%); z-index: 1; pointer-events: none;
+  width: max-content; max-width: calc(var(--bl-l, 300px) - 28px); min-height: 0; padding: 4px 12px; border-radius: 14px;
+  background: rgba(40, 10, 80, .72); color: #fff; font-size: 1rem; line-height: 1.25; text-align: center;
+}
+.bl-zone .status strong { color: #FFE14D; }
+.bl-zone .status:empty { display: none; }
+/* pendant les Bulles, la page n'a pas besoin de sa grande marge du bas */
+body:has(.bl-body) { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
 
 /* Bonus à lancer */
 .bl-boosters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -132,6 +142,24 @@
   .bl-rond:active .ic, .bl-booster:active, .bl-pause:active { transform: scale(.92); }
   .bl-chargement { animation: bl-respire 1.2s ease-in-out infinite; }
   @keyframes bl-respire { 50% { opacity: .7; } }
+}
+
+/* Téléphone : tout doit tenir dans l'écran sans défiler. Bonus compacts (icône à gauche, nom et prix à droite),
+   pas de mode d'emploi en bas (il est dans le panneau du début). Le plateau prend la place qui reste (voir largeurIdeale). */
+@media (max-width: 600px), (orientation: landscape) and (max-height: 560px) {
+  .bl-hud { padding: 6px 8px 8px; gap: 4px; }
+  .bl-side { gap: 8px; }
+  .bl-side .tip { display: none; }
+  .bl-booster {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 6px; row-gap: 0;
+    min-height: 56px; padding: 4px 8px; text-align: left;
+  }
+  .bl-booster canvas { grid-row: 1 / span 2; width: 36px; height: 36px; }
+}
+/* très petit téléphone : l'icône et le prix (le nom est dans la fenêtre qui s'ouvre avant l'achat) */
+@media (max-width: 379px) {
+  .bl-booster { grid-template-columns: auto auto; justify-content: center; }
+  .bl-booster span { display: none; }
 }
 
 /* Téléphone à l'horizontale : le plateau à gauche, les informations et commandes à droite */

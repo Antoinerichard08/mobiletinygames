@@ -12,7 +12,7 @@
 // }
 // La terre est un ensemble de cases, de forme libre ; elle s'agrandit case par case (on achète une case
 // d'eau collée à la terre). La mer qui la touche accueille les ports.
-import { aleaGraine } from '../core/outils.js';
+import { aleaGraine, pluriel } from '../core/outils.js';
 
 export const MINUTE = 60 * 1000;
 export const RESSOURCES = ['bois', 'pierre', 'ble'];
@@ -22,6 +22,8 @@ export const NOMS_RESSOURCES = { bois: 'bois', pierre: 'pierre', ble: 'blé', pi
  * créditées par l'écran au moment du ramassage.
  */
 export const RECOLTES_EXTERIEURES = ['pieces'];
+/** « 3 bois », « 1 pièce de puzzle », « 2 pièces de puzzle » (bois, pierre et blé sont invariables). */
+export const quantite = (q, res) => (res === 'pieces' ? pluriel(q, 'pièce de puzzle', 'pièces de puzzle') : `${q} ${NOMS_RESSOURCES[res]}`);
 
 /** l × h : la place dont dispose l'île au départ ; surface : son nombre de cases de terre au départ. */
 export const ILES = [
@@ -682,7 +684,9 @@ export function avancerAtelier(e, minutes, t) {
   const { c } = a, p = periode(c);
   const limite = t - 2 * plafond(c) * p; // au plus deux réserves de travail d'avance
   const avant = c.depuis;
-  c.depuis = Math.max(limite, c.depuis - minutes * MINUTE);
+  const apres = Math.max(limite, c.depuis - minutes * MINUTE);
+  if (apres >= avant) return 0; // déjà deux réserves d'avance : rien à gagner (et surtout rien à reprendre)
+  c.depuis = apres;
   return Math.round((avant - c.depuis) / MINUTE);
 }
 
@@ -764,6 +768,13 @@ export function actualiser(e, t) {
       if (c.chantier && t >= c.chantier.fin) {
         const etaitNeuf = c.niveau === 0;
         const avant = beauteIle(ile);
+        if (!etaitNeuf && BATIMENTS[c.type]?.prod && c.depuis !== undefined) {
+          // ce qui a déjà été produit garde sa valeur : le nouveau rythme ne compte qu'à partir de la fin des travaux
+          const fin = c.chantier.fin, maxi = plafond(c) * (c.type === 'atelier' ? 2 : 1);
+          const unites = Math.min(maxi, Math.max(0, (fin - c.depuis) / periode(c)));
+          c.niveau = c.chantier.vers;
+          c.depuis = fin - unites * periode(c);
+        }
         c.niveau = c.chantier.vers;
         if (etaitNeuf) c.depuis = c.chantier.fin;
         c.chantier = null;

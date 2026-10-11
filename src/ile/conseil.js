@@ -6,7 +6,7 @@
 //         | { genre: 'bouton', id }          un bouton de l'écran ('jouer', 'construire')
 //   et, quand le conseil est de bâtir : suggestion { type, n, cle } (la meilleure case).
 import {
-  BATIMENTS, DECORS, ORDRE_BATIMENTS, ORDRE_DECORS, NOMS_RESSOURCES, cle, coord, estDebloque, peutPayer, apercu,
+  BATIMENTS, DECORS, ORDRE_BATIMENTS, ORDRE_DECORS, quantite, cle, coord, estDebloque, peutPayer, apercu,
   stock, plafond, produit, batisseursLibres, chantiers, niveauMax, ilesOuvertes, terrainDe,
 } from './regles.js';
 
@@ -61,7 +61,7 @@ export function conseil(e, etoiles, t, n = 0) {
   });
   if (recolte && recolte.part >= 0.3) {
     const def = BATIMENTS[recolte.c.type];
-    return { texte: `${recolte.q} ${NOMS_RESSOURCES[def.prod.res]} ${def.prod.res === 'pieces' && recolte.q > 1 ? 'vous attendent' : 'vous attend'} ${aLa(def.nom)}. Touchez-${pronom(def.nom)} pour le ramasser.`, cible: { genre: 'case', n: recolte.n, cle: recolte.cle } };
+    return { texte: `${quantite(recolte.q, def.prod.res)} ${def.prod.res === 'pieces' && recolte.q > 1 ? 'vous attendent' : 'vous attend'} ${aLa(def.nom)}. Touchez-${pronom(def.nom)} pour le ramasser.`, cible: { genre: 'case', n: recolte.n, cle: recolte.cle } };
   }
 
   // 3. un bâtiment qui ne produit rien faute de voisin

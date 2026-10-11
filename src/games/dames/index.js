@@ -201,7 +201,7 @@ function dessiner(message, optionsPieces = {}) {
   $('#dm-score', racine).textContent = `Vos pions : ${compter(D.plateau, BLANC)} · Pions de l’ordinateur : ${compter(D.plateau, ROUGE)}`;
   $$('#dm-level button', racine).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.level === D.niveau)));
   $$('#dm-size button', racine).forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.size) === N)));
-  $('#dm-undo', racine).disabled = !D.historique.length || reflechit || anime;
+  $('#dm-undo', racine).disabled = !D.historique.length || reflechit || anime || D.resultat === 'gagne'; // une victoire ne se rejoue pas
   $('#dm-hint', racine).disabled = reflechit || anime || D.fini || D.tour !== BLANC;
 }
 
@@ -377,7 +377,7 @@ async function montrerIndice() {
 }
 
 function annuler() {
-  if (reflechit || anime || !D.historique.length) return;
+  if (reflechit || anime || D.resultat === 'gagne' || !D.historique.length) return;
   jeton++;
   // on revient au dernier moment où c'était à vous de jouer
   while (D.historique.length) {

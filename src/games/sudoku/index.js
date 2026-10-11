@@ -142,7 +142,7 @@ function dessiner() {
   if (!racine) return;
   $$('#sdk-level button', racine).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.level === S.niveau)));
   $('#sdk-pencil', racine).setAttribute('aria-pressed', String(crayon));
-  $('#sdk-undo', racine).disabled = !S.historique.length;
+  $('#sdk-undo', racine).disabled = !S.historique.length || S.gagne; // une grille gagnée ne se rejoue pas
   if (!S.grille) return;
   const conf = conflits(S.actuel);
   const valeurSel = sel >= 0 ? S.actuel[sel] : 0;
@@ -295,6 +295,7 @@ function verifier() {
 }
 
 function annuler() {
+  if (S.gagne) return;
   const h = S.historique.pop();
   if (!h) return;
   S.actuel = h.actuel;

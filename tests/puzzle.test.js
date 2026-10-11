@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BATIMENTS, MINUTE, etatVide, cle, terrainDe, construire, actualiser, ameliorer, stock, ramasser, toutRamasser,
-  avancerAtelier, atelier, periode, plafond, dejaConstruit, estDebloque, AVANCE_PARTIE, AVANCE_MISSION,
+  avancerAtelier, atelier, periode, plafond, dejaConstruit, estDebloque, AVANCE_PARTIE, AVANCE_MISSION, quantite,
 } from '../src/ile/regles.js';
 import { soldePieces, ajouterPieces, depenserPieces, totalPieces } from '../src/core/pieces.js';
 import { viderMemoire } from '../src/core/stockage.js';
@@ -85,6 +85,32 @@ test('rien ne se perd : le temps gagné au-delà de la réserve est gardé (une 
   assert.equal(stock(ile, ...xy, t), 6, 'une réserve de plus, pas davantage');
   assert.equal(ramasser(e, 0, ...xy, t).n, 6);
   assert.equal(stock(ile, ...xy, t), 0);
+});
+
+test('longue absence : une partie gagnée n’enlève jamais de temps à l’Atelier', () => {
+  const { e, ile, xy } = avecAtelier(1, T0);
+  const t = T0 + 120 * H; // 5 jours sans rien ramasser : bien plus que deux réserves
+  assert.equal(avancerAtelier(e, 45, t), 0);
+  assert.equal(stock(ile, ...xy, t), 6);
+  assert.equal(ramasser(e, 0, ...xy, t).n, 6);
+  assert.equal(stock(ile, ...xy, t), 6, 'la réserve d’avance est intacte');
+});
+
+test('améliorer ne recompte pas le passé au nouveau rythme', () => {
+  const { e, ile, k, xy } = avecAtelier(1, T0);
+  const t = T0 + 48 * H;
+  assert.equal(stock(ile, ...xy, t), 6);
+  ile.cases[k].chantier = { debut: t - 1, fin: t, vers: 2 };
+  actualiser(e, t);
+  assert.equal(ile.cases[k].niveau, 2);
+  assert.equal(stock(ile, ...xy, t), 6, 'les mêmes 6 pièces, pas 8');
+  assert.equal(stock(ile, ...xy, t + 6 * H), 7, 'puis une pièce toutes les 6 h');
+});
+
+test('accord : « 1 pièce de puzzle », « 2 pièces de puzzle », « 3 bois »', () => {
+  assert.equal(quantite(1, 'pieces'), '1 pièce de puzzle');
+  assert.equal(quantite(2, 'pieces'), '2 pièces de puzzle');
+  assert.equal(quantite(3, 'bois'), '3 bois');
 });
 
 test('tirelire de pièces : on ajoute, on dépense ce qu’on a', () => {

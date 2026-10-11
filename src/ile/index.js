@@ -19,7 +19,7 @@ import {
   plafond, periode, ramasser, toutRamasser, peutAmenager, amenager, acheterCase, coutCase, casesAchetables, peutAcheter, actualiser, beauteTotale,
   ilesOuvertes, estDebloque, apercu, habitants, peutPayer, manque, niveauMax, pointsCase, ouvrirTout, batisseurs,
   batisseursLibres, chantiers, prixBatisseur, engagerBatisseur, prixFinir, finir, peutDeplacer, apercuDeplacement,
-  deplacer, ramasserTresor, paliers, progressionIle, dureeChantier, voisinsDe, dejaConstruit,
+  deplacer, ramasserTresor, paliers, progressionIle, dureeChantier, voisinsDe, dejaConstruit, quantite,
 } from './regles.js';
 import { conseil } from './conseil.js';
 import { camera, versEcran, versMonde, borner, zoomAutour, zoomPourVoir, centrePourVoir, entre } from './camera.js';
@@ -43,6 +43,7 @@ const CADRE = { haut: 44, bas: 28, gauche: 120, droite: 160 };
 const CADRE_AGRANDIR = { haut: 56, bas: 16, gauche: 24, droite: 170 };
 
 let E = null;
+let ressourcesReelles = null; // mode développeur : les vraies ressources, gardées à part (le 9999 n'est jamais enregistré)
 let racine = null;
 let scene = null;
 let toile = null;
@@ -68,6 +69,7 @@ const vibrer = (ms = 12) => { try { navigator.vibrate?.(ms); } catch { /* rien *
 
 function charger() {
   E = migrer(lire(CLE, null), maintenant());
+  ressourcesReelles = { ...E.ressources };
   ouvrirTout(modeDev());
   remplirSiDev();
 }
@@ -78,7 +80,7 @@ function remplirSiDev() {
 function sauver() {
   remplirSiDev();
   if (!modeDev()) E.soldeVu = solde();
-  ecrire(CLE, E);
+  ecrire(CLE, modeDev() ? { ...E, ressources: ressourcesReelles } : E);
 }
 
 // ---------- Petits morceaux d'affichage ----------
@@ -629,9 +631,9 @@ async function recolter(n, k) {
   sauver();
   vibrer(10);
   const c = centreCase(ile, n, x, y);
-  rendu.texte(c.x, c.y - 0.6, `+${q} ${NOMS_RESSOURCES[res]}`, temps);
+  rendu.texte(c.x, c.y - 0.6, `+${quantite(q, res)}`, temps);
   rendu.gerbe(c.x, c.y - 0.4, 'etoiles', temps);
-  dire(`+${q} ${NOMS_RESSOURCES[res]} !`, 2500);
+  dire(`+${quantite(q, res)} !`, 2500);
   await voler(c, res, q);
   majHud();
   majActions();
@@ -651,7 +653,7 @@ async function toutRecolter() {
   if (total.pieces) ajouterPieces(total.pieces, 'atelier');
   sauver();
   vibrer(15);
-  dire(`Récolte : ${Object.entries(total).map(([r, q]) => `+${q} ${NOMS_RESSOURCES[r]}`).join(', ')} !`);
+  dire(`Récolte : ${Object.entries(total).map(([r, q]) => `+${quantite(q, r)}`).join(', ')} !`);
   for (const [c, , q] of envols) rendu.texte(c.x, c.y - 0.6, `+${q}`, temps);
   await Promise.all(envols.slice(0, 8).map(([c, r, q], i) => new Promise((ok) => setTimeout(ok, i * 110)).then(() => voler(c, r, q))));
   majHud();
@@ -936,8 +938,14 @@ async function retirerCase(n, k) {
 // au lieu de quitter l'île. Quand on la ferme soi-même, on retire l'étape (et l'on ignore le « popstate » qui suit).
 let couches = 0, popIgnores = 0, apresRetour = [];
 function ouvrirCouche() {
-  history.pushState({ ile: true }, '');
   couches++;
+  const ajouter = () => history.pushState({ ile: true }, '');
+  // une fermeture est encore en route (history.back() n'agit pas tout de suite) : on ajoute l'étape après elle,
+  // sinon le retour en attente l'emporterait et une fermeture suivante ferait quitter l'île
+  if (popIgnores) {
+    const i = apresRetour.length - 1, avant = apresRetour[i];
+    apresRetour[i] = () => { avant?.(); ajouter(); };
+  } else ajouter();
 }
 function fermerCouche(ensuite = null) {
   if (couches <= 0) { ensuite?.(); return; }
@@ -1008,7 +1016,7 @@ function fenetreInfo(n, k) {
     if (bat.habitants && c.niveau) lignes.push(`<li><span>Habitants</span><b>${bat.habitants * c.niveau}</b></li>`);
     if (bat.prod && c.niveau) {
       lignes.push(produit(ile, x, y)
-        ? `<li><span>Production</span><b>1 ${NOMS_RESSOURCES[bat.prod.res]} toutes les ${duree(periode(c))}</b></li><li><span>Réserve</span><b>${stock(ile, x, y, t)} sur ${plafond(c)}</b></li>`
+        ? `<li><span>Production</span><b>${quantite(1, bat.prod.res)} toutes les ${duree(periode(c))}</b></li><li><span>Réserve</span><b>${stock(ile, x, y, t)} sur ${plafond(c)}</b></li>`
         : `<li class="alerte"><span>Ne produit rien</span><b>Il faut ${bat.prod.besoin === 'foret' ? 'une forêt à deux cases au plus' : 'des rochers juste à côté'}</b></li>`);
     }
     if (c.chantier) lignes.push(`<li><span>${c.niveau === 0 ? 'Construction' : `Vers le niveau ${c.chantier.vers}`}</span><b>encore ${duree(c.chantier.fin - t)}</b></li>`);
@@ -1034,7 +1042,7 @@ async function fenetreAmelioration(n, k) {
   const lignes = [`<li><span>Beauté de base</span><b>${bat.base * c.niveau} <i>→</i> <em>${bat.base * vers}</em></b></li>`];
   if (bat.habitants) lignes.push(`<li><span>Habitants</span><b>${bat.habitants * c.niveau} <i>→</i> <em>${bat.habitants * vers}</em></b></li>`);
   if (bat.prod) {
-    lignes.push(`<li><span>Production</span><b>1 ${NOMS_RESSOURCES[bat.prod.res]} / ${duree(periode(c))} <i>→</i> <em>${duree(periode({ ...c, niveau: vers }))}</em></b></li>`);
+    lignes.push(`<li><span>Production</span><b>${quantite(1, bat.prod.res)} / ${duree(periode(c))} <i>→</i> <em>${duree(periode({ ...c, niveau: vers }))}</em></b></li>`);
     lignes.push(`<li><span>Réserve</span><b>${plafond(c)} <i>→</i> <em>${plafond({ ...c, niveau: vers })}</em></b></li>`);
   }
   lignes.push(`<li><span>Durée des travaux</span><b>${duree(dureeChantier(c.type, vers))}</b></li>`);
@@ -1364,7 +1372,7 @@ function brancher() {
     sortirModePose();
     dire('');
   });
-  sur('ile-terminer', finirAgrandir);
+  sur('ile-terminer', () => finirAgrandir()); // (sans l'événement du clic, qui passerait pour « dejaRetire »)
   sur('ile-prec', () => changerIle(-1));
   sur('ile-nom', () => { deselectionner(); volerVers(cameraPourIle(E.active), 700); }); // perdu ? on revient sur l'île
   sur('ile-suiv', () => changerIle(1));

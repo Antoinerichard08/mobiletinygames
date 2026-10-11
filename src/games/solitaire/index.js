@@ -214,7 +214,7 @@ function dessiner() {
   h += '</div></div>';
   table.innerHTML = h;
 
-  $('#sol-undo', racine).disabled = !E.historique.length || occupe;
+  $('#sol-undo', racine).disabled = !E.historique.length || occupe || E.gagne; // une partie gagnée ne se rejoue pas
   $('#sol-finish', racine).hidden = !(peutFinirSeul(J) && !E.gagne);
   $('#sol-info', racine).textContent = `${NOMS[E.niveau]} · ${J.tirage === 3 ? '3 cartes' : '1 carte'} à la fois · ${pluriel(J.moves, 'coup')}`;
 }
@@ -363,7 +363,7 @@ function montrerIndice() {
 }
 
 async function annuler() {
-  if (occupe || !E.historique.length) return;
+  if (occupe || E.gagne || !E.historique.length) return;
   const precedent = E.historique.pop();
   E.annulations++;
   occupe = true;
