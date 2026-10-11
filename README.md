@@ -64,7 +64,13 @@ Pour une nouvelle version : refaire les mêmes étapes, le bouton s'appellera **
   une couleur), **éclair** (vide sa rangée), **glace** (il faut la toucher deux fois), bonbons **à deux couleurs** et
   **mystère**. Plus on enchaîne les éclats, plus le score monte (jusqu'à ×3). Les 3 étoiles du haut se remplissent
   avec le score : à la fin, « Rejouer pour faire mieux » permet de retenter sa chance. Le bouton ⏸ ouvre la pause.
-- Le **Solitaire**, les **Dames**, le **Sudoku**, le **Backgammon** et les **Bulles** se jouent aussi téléphone tourné à l'horizontale.
+- **Puzzle** : cinq tableaux de grands peintres attendent (3 petits de 12 pièces, 1 moyen de 24, 1 grand de 48).
+  On y place ses **pièces de puzzle** : le tableau, flou au début, se précise. Quand il a toutes ses pièces, touchez
+  « Assembler » : faites glisser chaque pièce à sa place (ou touchez-la, puis touchez sa place), elle s'aimante toute
+  seule. « Annuler » reprend la dernière. Le tableau terminé rejoint la **Bibliothèque**, un nouveau prend sa place.
+- Les **pièces de puzzle** se fabriquent à l'**Atelier du puzzle**, sur l'île (il se débloque à 15 de beauté).
+  Chaque partie gagnée et chaque mission du jour le font avancer, et l'Aventure offre 4 pièces tous les 10 niveaux.
+- Le **Solitaire**, les **Dames**, le **Sudoku**, le **Backgammon**, les **Bulles** et le **Puzzle** se jouent aussi téléphone tourné à l'horizontale.
 
 ---
 
@@ -115,7 +121,7 @@ tout de suite ; ajoutez `?sw=1` à l'adresse pour tester le mode hors ligne.
 
 Pour tout tester sans jouer des heures, ouvrez l'appli avec **`?dev=1`** à la fin de l'adresse, par exemple
 https://antoinerichard08.github.io/mobiletinygames/?dev=1 : étoiles infinies (affichées ∞), tous les niveaux de
-l'Aventure et des Bulles ouverts, bonus des Bulles gratuits, tout débloqué sur l'île avec des ressources pleines.
+l'Aventure et des Bulles ouverts, bonus des Bulles gratuits, tout débloqué sur l'île avec des ressources pleines, pièces de puzzle illimitées.
 Le réglage est **mémorisé sur ce téléphone seulement** (les autres ne sont pas touchés). Pour revenir à la normale :
 le bouton « Quitter ce mode » du bandeau de l'accueil, ou `?dev=0` dans l'adresse. Les vraies étoiles gagnées
 entre-temps sont conservées.
@@ -170,6 +176,22 @@ une appli légère, rapide sur un vieux téléphone et sous licence MIT, leurs t
   dépassent jamais 40 % des cases. Le skin « bonbons » est entièrement **dessiné par le code** (`rendu.js`, mis en
   cache dans des `OffscreenCanvas`) : les visuels de référence étaient payants, aucune image n'en est reprise.
 - **Aventure** : le modèle de la « carte saga » popularisé par Candy Crush, avec un rythme quotidien.
+- **Pièces de puzzle et jeu Puzzle** : une boucle de collection à long terme.
+  - L'Atelier (unique sur l'archipel) produit 1 pièce toutes les 8 h, 6 h, 4 h 48 puis 4 h selon son niveau, avec une
+    réserve de 6 à 12 pièces (une journée au moins) ; le temps gagné au-delà de la réserve est gardé (une réserve de plus).
+  - Accélérations : une partie gagnée avance l'Atelier de 30, 45 ou 60 min (selon la difficulté, 45 sans difficulté),
+    une mission d'1 h (`src/ile/atelier.js`, branché sur la fin de partie commune) ; l'Aventure donne 4 pièces tous
+    les 10 niveaux. Un joueur « normal » (4 parties, 3 missions, 3 niveaux par jour) termine un petit tableau en
+    2 à 3 jours et un grand en une dizaine de jours : c'est vérifié par un test (`tests/puzzle.test.js`).
+  - Les pièces sont rangées à part (`src/core/pieces.js`), comme les étoiles. Les tailles des puzzles se règlent
+    dans `src/games/puzzle/moteur.js` (`TAILLES`).
+- **Tableaux du Puzzle** : 27 œuvres du **Metropolitan Museum of Art**, publiées sous licence **CC0** (Open Access),
+  récupérées sur Wikimedia Commons. `node scripts/telecharger-puzzles.mjs` vérifie la licence de chaque fichier
+  (il refuse tout ce qui n'est pas CC0), télécharge l'image en 960 px dans `assets/puzzles/` et une vignette de 20 px,
+  et écrit `data/catalogue-puzzles.json` (titre, artiste, date, licence, page d'origine). Le catalogue est mis en
+  cache avec l'appli ; les images, non : chaque téléphone ne télécharge que celles dont il a besoin, depuis notre site,
+  les convertit en WebP (1000 px) et les garde dans IndexedDB. Ensuite tout marche hors ligne, bibliothèque comprise.
+  Pour ajouter des tableaux : compléter la liste `CHOIX` du script, le relancer, puis changer de version.
 - **Mon île** : inspiré d'*Islanders* (points selon les voisins), sans malus, sans minuteur, sans échec.
   L'**interface** reprend celle de *Clash of Clans* : monde plein écran qu'on parcourt du doigt (caméra avec élan,
   zoom à deux doigts), ressources en haut à droite, niveau en haut à gauche, « Jouer » et « Construire » en bas,

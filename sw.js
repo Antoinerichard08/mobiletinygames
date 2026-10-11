@@ -2,7 +2,7 @@
 // À chaque nouvelle version, « npm run nouvelle-version -- X.Y.Z » change VERSION (et la liste des fichiers) :
 // le navigateur voit que ce fichier a changé, télécharge la nouvelle version et efface l'ancienne.
 
-const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 const CACHE = `salon-de-jeux-${VERSION}`;
 
 // FICHIERS-DEBUT (liste générée par scripts/nouvelle-version.mjs, vérifiée par les tests)

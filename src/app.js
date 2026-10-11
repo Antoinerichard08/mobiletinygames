@@ -170,7 +170,7 @@ function afficherAccueil() {
       </div>
       <p class="titre-section">Jeux libres</p>
       <div class="tiles"></div>
-      <p class="foot">Aucune publicité, aucun compte. Vos parties restent sur ce téléphone.<br>Graphismes de l’île : « Tiny Islands » par Majadroid, « Tiny Town » par Kenney.<br>Version ${VERSION}</p>
+      <p class="foot">Aucune publicité, aucun compte. Vos parties restent sur ce téléphone.<br>Seules les images du jeu Puzzle sont téléchargées, au besoin, depuis le site de l’appli : sans identifiant ni envoi de données.<br>Graphismes de l’île : « Tiny Islands » par Majadroid, « Tiny Town » par Kenney. Tableaux : The Metropolitan Museum of Art (domaine public, CC0).<br>Version ${VERSION}</p>
     </section>`;
   monIle.peindre($('.miniature', app));
   const tuiles = $('.tiles:not(.grandes)', app);

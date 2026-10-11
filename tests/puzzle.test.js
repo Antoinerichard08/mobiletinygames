@@ -253,3 +253,25 @@ test('puzzle : la grille suit les proportions du tableau, les pièces s’emboî
   const ordre = m.melangees(12, 'x');
   assert.deepEqual([...ordre].sort((a, b) => a - b), [...Array(12).keys()]);
 });
+
+// ---------- Équilibrage ----------
+
+test('équilibrage : un petit tableau en 2 à 3 jours, un grand en une dizaine de jours (Atelier niveau 1)', async () => {
+  const { TAILLES } = await import('../src/games/puzzle/moteur.js');
+  const { LOT_PIECES } = await import('../src/progression/niveaux.js');
+  // une journée « normale » : l'Atelier tourne 24 h (on passe ramasser), 4 parties gagnées (45 min en moyenne),
+  // 3 missions, et 3 niveaux d'Aventure (un lot de pièces tous les 10 niveaux)
+  const parJour = (niveau) => {
+    const c = { type: 'atelier', niveau };
+    const minutes = 24 * 60 + 4 * AVANCE_PARTIE.moyen + 3 * AVANCE_MISSION;
+    return minutes * MINUTE / periode(c) + (3 / 10) * LOT_PIECES;
+  };
+  const jours = (taille, niveau) => TAILLES[taille] / parJour(niveau);
+  assert.ok(jours('petit', 1) >= 2 && jours('petit', 1) <= 3, `petit : ${jours('petit', 1).toFixed(1)} jours`);
+  assert.ok(jours('grand', 1) >= 8.5 && jours('grand', 1) <= 11, `grand : ${jours('grand', 1).toFixed(1)} jours`);
+  // en améliorant l'Atelier, ça va plus vite (c'est la récompense), sans tout bâcler
+  assert.ok(jours('grand', 4) < jours('grand', 1));
+  assert.ok(jours('petit', 4) >= 1, 'même au niveau 4, un petit tableau prend au moins une journée');
+  // la réserve tient au moins une journée entière : passer une fois par jour suffit, rien ne se perd
+  for (let n = 1; n <= 4; n++) assert.ok(plafond({ type: 'atelier', niveau: n }) * periode({ type: 'atelier', niveau: n }) >= 24 * 60 * MINUTE);
+});
