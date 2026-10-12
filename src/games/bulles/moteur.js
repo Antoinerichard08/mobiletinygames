@@ -12,6 +12,7 @@
 //   { type: 'etoile' }  touchée par une bulle de couleur, elle fait disparaître toutes les bulles de cette couleur
 //   { type: 'fruit' }   une cerise : ne s'éclate pas ; on la fait tomber dans les bocaux (objectif « cueillir »)
 //   cameleon: true      (sur une bulle de couleur) elle change de couleur après chaque tir
+//   { type: 'plafond' } le plafond qui descend (certains niveaux) : indestructible, les bulles s'y accrochent
 // Bulles tirées : { k } (couleur), { tir: 'bombe' }, { tir: 'arc' } (prend la couleur du plus grand groupe touché),
 //                 { tir: 'feu' } (traverse tout jusqu'au plafond).
 // En bas du plateau, cinq bocaux recueillent ce qui tombe : × 3, × 2, × 1, × 2, × 3 (ceux des bords valent plus).
@@ -192,7 +193,7 @@ export function resoudre(p, cible, tiree, touchees = []) {
   // ce qui arrive à une bulle emportée par une explosion, un éclair ou le feu
   const emporter = (a, b) => {
     const v = p[a][b];
-    if (!v) return;
+    if (!v || v.type === 'plafond') return; // le plafond ne s'emporte pas
     if (v.type === 'bombe') exploser(a, b);
     else if (v.type === 'eclair') foudroyer(a, b);
     else retirer(a, b, ev.eclatees);
@@ -295,6 +296,23 @@ export function changerCameleons(p) {
 
 /** Une bulle est-elle descendue jusqu'à la dernière rangée ? */
 export const debordement = (p) => p[RANGEES_MAX - 1].some(Boolean);
+
+/**
+ * Le plafond descend d'un cran : tout le plateau glisse de deux rangées (deux, pour garder le décalage des rangées),
+ * et deux rangées de plafond apparaissent en haut. Renvoie true si des bonbons sont descendus trop bas.
+ */
+export function descendre(p) {
+  const trop = [RANGEES_MAX - 2, RANGEES_MAX - 1].some((r) => p[r].some((v) => v && v.type !== 'plafond'));
+  for (let r = RANGEES_MAX - 1; r >= 0; r--) {
+    for (let c = 0; c < largeurRangee(r); c++) p[r][c] = r >= 2 ? p[r - 2][c] : { type: 'plafond' };
+  }
+  return trop || debordement(p);
+}
+/** Le nombre de rangées de plafond descendues. */
+export function rangeesPlafond(p) {
+  const i = p.findIndex((rg) => rg[0]?.type !== 'plafond');
+  return i < 0 ? RANGEES_MAX : i;
+}
 
 // ---------- Points ----------
 

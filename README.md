@@ -64,6 +64,7 @@ Pour une nouvelle version : refaire les mêmes étapes, le bouton s'appellera **
   Au fil des niveaux arrivent des bonbons spéciaux : **+3** (3 bulles en plus), **étoile** (fait disparaître toute
   une couleur), **éclair** (vide sa rangée), **glace** (il faut la toucher deux fois), bonbons **à deux couleurs** et
   **mystère**, **caméléons** (ils changent de couleur après chaque tir) et des niveaux où il faut **faire tomber les cerises**.
+  Un niveau sur quatre à partir du 9, le **plafond descend** d'un cran tous les 7 tirs (un compteur prévient).
   Ce qui tombe atterrit dans **cinq bocaux** : ceux des bords rapportent le plus (× 3). Un **ricochet** sur le bord avant
   d'éclater vaut × 1,5, et cinq tirs réussis d'affilée rendent les bocaux **en or** (× 2 pendant trois tirs). De petits sons
   accompagnent le jeu (on peut les couper dans la pause).
@@ -182,7 +183,8 @@ une appli légère, rapide sur un vieux téléphone et sous licence MIT, leurs t
   gardé que s'il est gagnable, et le nombre de bulles données comme les étoiles se calent sur ses parties.
   Les étoiles se gagnent **au score** (paliers calculés à partir du score médian du joueur automatique). Les bonbons
   spéciaux arrivent progressivement (+3 dès le niveau 5, cerises 7, étoile 8, glace 10, éclair 12, caméléon 14,
-  bicolore 16, mystère 22) et ne dépassent jamais 40 % des cases. Mécaniques reprises du genre : les bocaux du premier
+  bicolore 16, mystère 22) et ne dépassent jamais 40 % des cases. Le plafond qui descend (comme dans *Puzzle Bobble*) glisse de deux
+  rangées à la fois, pour garder le décalage des rangées ; ces niveaux commencent avec 6 rangées au plus. Mécaniques reprises du genre : les bocaux du premier
   *Bubble Witch Saga*, le « Hot Pot » de *Bubble Witch 2* (6 coups d'affilée = points doublés), les niveaux de collecte
   de *Bubble Witch 3*, les tirs en ricochet de *Panda Pop*. La visée est libre : la bulle ne se cale dans sa case qu'en
   arrivant ; la ligne de visée ne montre ni la case d'arrivée ni, au-delà d'une certaine longueur, la suite du chemin.

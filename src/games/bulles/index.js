@@ -17,7 +17,7 @@ import { modeDev } from '../../core/config.js';
 import {
   LARGEUR, SQ, RANGEES_MAX, DEPART, ANGLE_MIN, ANGLE_MAX, centre, cloner, cases, trajectoire, resoudre, reussi,
   debordement, couleursPresentes, nbPoussins, points, charge, SEUIL_BONUS, reussite, multiplicateur, BONUS_RESTE,
-  nbFruits, changerCameleons, BOCAUX, bocalDe, pointsChute, SERIE_OR, TIRS_OR,
+  nbFruits, changerCameleons, BOCAUX, bocalDe, pointsChute, SERIE_OR, TIRS_OR, descendre, rangeesPlafond,
 } from './moteur.js';
 import { genererNiveau, meilleurCoup, etoilesNiveau, niveauPourDefi } from './generateur.js';
 import { PALETTE, dessinerBulle, dessinerPoussin, fabriquerFond, reglerSymboles } from './rendu.js';
@@ -58,6 +58,8 @@ let surRedim = null;
 let observateur = null; // surveille la hauteur du score et des commandes (styles chargés, message plus long…)
 let impact = null; // { x, y, t0 } : la bulle vient de se poser, ses voisines tremblent comme de la gelée
 let eclatsBocaux = []; // l'heure du dernier bonbon tombé dans chaque bocal (il s'illumine)
+let descente = null; // { t0 } : le plafond vient de descendre (le plateau glisse doucement)
+const DUREE_DESCENTE = 480;
 
 // ---------- Hasard reproductible (pour qu'« Annuler » redonne les mêmes bulles) ----------
 function hasard() {
@@ -112,6 +114,7 @@ async function commencer(n) {
     n, plateau: cloner(niveau.plateau), objectif: niveau.objectif, tirs: niveau.tirs, paliers: niveau.paliers,
     utilises: 0, score: 0, jauge: 0, bonus: 0, serie: 0, offerts: false, graine: (n * 2654435761) >>> 0, historique: [],
     indices: 0, annulations: 0, poussinsDepart: nbPoussins(niveau.plateau), fruitsDepart: nbFruits(niveau.plateau), reserve: null, or: 0,
+    plafond: niveau.plafond || 0, avantDescente: niveau.plafond || 0,
   };
   S.courante = nouvelleCouleur();
   S.suivante = nouvelleCouleur();
@@ -283,11 +286,16 @@ function dessiner(t = performance.now()) {
   ctx.stroke();
   ctx.setLineDash([]);
   dessinerBocaux(t);
+  // le plafond vient de descendre : tout glisse de deux rangées, en douceur
+  const glisse = descente && !mouvementReduit() && t - descente.t0 < DUREE_DESCENTE
+    ? -2 * SQ * (1 - (1 - (1 - (t - descente.t0) / DUREE_DESCENTE) ** 3)) : 0;
+  dessinerPlafond(glisse);
   // la bulle qui vient de se poser fait trembler ses voisines, comme de la gelée
   const gelee = impact && !mouvementReduit() && t - impact.t0 < 520 ? (t - impact.t0) / 520 : null;
   for (const [r, c, b] of cases(S.plateau)) {
+    if (b.type === 'plafond') continue;
     const q = centre(r, c);
-    let ox = 0, oy = 0;
+    let ox = 0, oy = glisse;
     if (gelee !== null) {
       const dx = q.x - impact.x, dy = q.y - impact.y, d = Math.hypot(dx, dy);
       if (d > 0.1 && d < 4.2) {
@@ -302,6 +310,38 @@ function dessiner(t = performance.now()) {
   if (volante) dessinerBulle(ctx, px(volante.x), px(volante.y), px(1), volante.b, t, dpr);
   dessinerLanceur(t);
   for (const e of effets) e.dessiner(t);
+}
+
+/** Le plafond descendu : une bande de biscuit au chocolat, glaçage rose qui coule, petites billes de sucre. */
+function dessinerPlafond(glisse = 0) {
+  const k = rangeesPlafond(S.plateau);
+  if (!k) return;
+  const bas = k * SQ + 0.15 + glisse;
+  const g = ctx.createLinearGradient(0, 0, 0, px(bas));
+  g.addColorStop(0, '#5A3418'); g.addColorStop(1, '#8A5530');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, px(LARGEUR), px(bas));
+  // des carrés de biscuit
+  ctx.strokeStyle = 'rgba(40, 20, 8, .35)';
+  ctx.lineWidth = 2;
+  for (let x = 2.75; x < LARGEUR; x += 2.75) { ctx.beginPath(); ctx.moveTo(px(x), 0); ctx.lineTo(px(x), px(bas - 0.6)); ctx.stroke(); }
+  // le glaçage qui coule
+  ctx.beginPath();
+  ctx.moveTo(0, px(bas - 0.9));
+  for (let x = 0; x <= LARGEUR; x += 0.25) ctx.lineTo(px(x), px(bas - 0.55 + Math.max(0, Math.sin(x * 1.3)) * 0.45 + Math.sin(x * 3.1) * 0.06));
+  ctx.lineTo(px(LARGEUR), px(bas - 0.9));
+  ctx.closePath();
+  ctx.fillStyle = '#FF9ACB';
+  ctx.fill();
+  ctx.strokeStyle = '#D9488A';
+  ctx.stroke();
+  // billes de sucre (toujours aux mêmes endroits)
+  const couleurs = ['#FFE14D', '#7BE0FF', '#FFFFFF', '#9BFF8A'];
+  for (let i = 0; i < 12; i++) {
+    const x = ((i * 37) % 100) / 100 * LARGEUR, y = bas - 0.75 + ((i * 53) % 10) / 40;
+    ctx.fillStyle = couleurs[i % couleurs.length];
+    ctx.fillRect(px(x), px(y), px(0.32), px(0.12));
+  }
 }
 
 /** Les cinq bocaux du bas : ce qui tombe dedans rapporte × 3, × 2, × 1, × 2, × 3 (en or : le double). */
@@ -343,7 +383,7 @@ function demarrer() {
     effets = effets.filter((e) => e.avancer(dt, t));
     dessiner(t);
     const besoin = volante || effets.length || visee || (conseil && t < conseil.jusqua) || S?.courante.tir
-      || (impact && t - impact.t0 < 600)
+      || (impact && t - impact.t0 < 600) || (descente && t - descente.t0 < DUREE_DESCENTE + 50)
       || (S && [...cases(S.plateau)].some(([, , b]) => b.type === 'etoile' || b.type === 'bombe' || b.cameleon));
     anim = besoin && racine ? requestAnimationFrame(boucle) : null;
   };
@@ -657,6 +697,19 @@ async function atterrir() {
   if (!reussi(S.plateau, S.objectif) && changerCameleons(S.plateau)) {
     for (const [r, c, v] of cases(S.plateau)) if (v.cameleon) { const q = centre(r, c); particules(q.x, q.y, PALETTE[v.k].base, 5, 0.6); }
   }
+  // certains niveaux : le plafond descend d'un cran tous les `plafond` tirs
+  let tropBas = false;
+  if (S.plafond && !reussi(S.plateau, S.objectif)) {
+    S.avantDescente = (S.avantDescente || S.plafond) - 1;
+    if (S.avantDescente <= 0) {
+      tropBas = descendre(S.plateau);
+      S.avantDescente = S.plafond;
+      descente = { t0: performance.now() };
+      texteVolant(LARGEUR / 2, 2 * SQ + 2.5, 'Le plafond descend !', '#FFD7A8', 1.5);
+      son.plafond();
+      secouer();
+    } else if (S.avantDescente === 1) dire('Le plafond descend au prochain tir !');
+  }
   // une couleur qui n'existe plus sur le plateau est remplacée
   if (S.courante.k !== undefined && !couleursPresentes(S.plateau).includes(S.courante.k)) S.courante = nouvelleCouleur();
   if (S.suivante.k !== undefined && !couleursPresentes(S.plateau).includes(S.suivante.k)) S.suivante = nouvelleCouleur();
@@ -666,6 +719,7 @@ async function atterrir() {
   demarrer();
   enCours = false;
   if (reussi(S.plateau, S.objectif)) return victoire();
+  if (tropBas) return defaite('Le plafond a poussé les bonbons trop bas.');
   if (debordement(S.plateau)) return defaite('Les bonbons sont descendus trop bas.');
   if (S.utilises >= S.tirs) return plusDeTirs();
   if (!reussite(ev) && S.tirs - S.utilises <= 3) dire(`Attention : plus que ${pluriel(S.tirs - S.utilises, 'bulle')} !`);
@@ -675,7 +729,7 @@ async function victoire() {
   enCours = true;
   // les bonbons restants (pierres…) tombent, puis chaque bulle non utilisée rapporte un bonus
   son.victoire();
-  for (const [r, c, b] of [...cases(S.plateau)]) { const q = centre(r, c); tomber(q.x, q.y, b, Math.random() * 300); S.plateau[r][c] = null; }
+  for (const [r, c, b] of [...cases(S.plateau)]) { if (b.type === 'plafond') continue; const q = centre(r, c); tomber(q.x, q.y, b, Math.random() * 300); S.plateau[r][c] = null; }
   demarrer();
   const restantes = Math.max(0, S.tirs - S.utilises);
   if (restantes) {
@@ -790,6 +844,7 @@ async function panneauDebut(premier) {
     <h3 class="bl-titre-panneau">${titre}</h3>
     <p class="bl-objectif-panneau">${objectif}</p>
     <p class="bl-bulles-panneau"><b>${S.tirs}</b> bulles</p>
+    ${S.plafond ? `<p class="bl-aide">Plafond : il descend d’un cran tous les ${S.plafond} tirs. Visez juste !</p>` : ''}
     ${nouvelles.map((k) => `<p class="bl-aide">${AIDE[k]}</p>`).join('')}
     ${premier ? '<p class="bl-aide">Posez le doigt là où vous voulez envoyer la bulle : la ligne montre le début de son chemin. Levez le doigt pour tirer. Trois bonbons de la même couleur éclatent !</p>' : ''}
     ${astuce ? '<p class="bl-aide">Ce qui tombe atterrit dans les bocaux du bas : ceux des bords rapportent le plus. Un ricochet sur le bord avant d’éclater : × 1,5 ! Cinq tirs réussis d’affilée, et les bocaux deviennent en or.</p>' : ''}
@@ -973,7 +1028,7 @@ function dessinerHud() {
       <button class="bl-pause" id="bl-pause" aria-label="Pause">II</button>
     </div>
     <div class="bl-infos">
-      <p class="bl-objectif">${objectif}</p>
+      <p class="bl-objectif">${objectif}${S.plafond ? `<span class="bl-plafond ${S.avantDescente <= 2 ? 'proche' : ''}">Plafond : ${pluriel(S.avantDescente, 'tir')}</span>` : ''}</p>
       <p class="bl-score"><b>${S.score}</b> pts${multiplicateur(S.serie || 0) > 1 ? ` <span class="bl-serie">× ${multiplicateur(S.serie).toLocaleString('fr-FR')}</span>` : ''}${S.or > 0 ? ` <span class="bl-or">or × 2</span>` : ''}</p>
       <p class="bl-tirs ${restantes <= 3 ? 'peu' : ''}" aria-label="${restantes} bulles restantes"><b>${restantes}</b><span>bulles</span></p>
     </div>

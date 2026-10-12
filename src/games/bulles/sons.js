@@ -72,6 +72,11 @@ export const son = {
     note(140, { duree: 0.32, forme: 'sawtooth', volume: 0.18, glisse: 0.35 });
     note(90, { debut: 0.02, duree: 0.28, volume: 0.35, glisse: 0.5 });
   },
+  /** Le plafond descend : deux coups sourds. */
+  plafond: () => {
+    note(98, { duree: 0.22, volume: 0.45, glisse: 0.7 });
+    note(73.42, { debut: 0.18, duree: 0.3, volume: 0.45, glisse: 0.7 });
+  },
   bonus: () => [783.99, 987.77, 1174.66, 1567.98].forEach((f, i) => note(f, { debut: i * 0.07, duree: 0.16, forme: 'triangle', volume: 0.32 })),
   or: () => [1046.5, 1318.51, 1567.98, 2093].forEach((f, i) => note(f, { debut: i * 0.06, duree: 0.2, forme: 'triangle', volume: 0.3 })),
   victoire: () => [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5].forEach((f, i) => note(f, { debut: i * 0.11, duree: 0.24, forme: 'triangle', volume: 0.38 })),

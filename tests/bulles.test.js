@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   plateauVide, voisines, centre, valide, largeurRangee, trajectoire, resoudre, reussi, debordement, couleursPresentes,
-  cases, cloner, RANGEES_MAX, LARGEUR, nbPoussins, points, multiplicateur, BOCAUX, bocalDe, pointsChute, changerCameleons, nbFruits,
+  cases, cloner, RANGEES_MAX, LARGEUR, nbPoussins, points, multiplicateur, BOCAUX, bocalDe, pointsChute, changerCameleons, nbFruits, descendre, rangeesPlafond,
 } from '../src/games/bulles/moteur.js';
 import { genererNiveau, simuler, parametres, etoilesNiveau, meilleurCoup, cibles, niveauPourDefi } from '../src/games/bulles/generateur.js';
 
@@ -314,4 +314,38 @@ test('génération : niveaux « cerises » et caméléons, toujours gagnables', 
     assert.ok(L.tirs >= 12);
   }
   assert.ok([...cases(genererNiveau(32).plateau)].some(([, , v]) => v.cameleon), 'des caméléons plus loin');
+});
+
+test('plafond : il descend de deux rangées (le décalage des rangées est gardé), les bulles y restent accrochées', () => {
+  const p = plateauVide();
+  p[0][3] = b(1); p[1][3] = b(1);
+  assert.equal(descendre(p), false);
+  assert.equal(rangeesPlafond(p), 2);
+  assert.equal(p[2][3].k, 1, 'même colonne, deux rangées plus bas');
+  assert.equal(p[3][3].k, 1);
+  // rien ne tombe : les bulles tiennent au plafond
+  const ev = resoudre(p, { r: 4, c: 0 }, { k: 5 });
+  assert.equal(ev.tombees.length, 1, 'seule la bulle isolée posée en bas tombe');
+  assert.ok(p[2][3] && p[3][3]);
+});
+
+test('plafond : indestructible (bombe, éclair, feu), et trop bas c’est perdu', () => {
+  const p = plateauVide();
+  descendre(p);
+  p[2][4] = b(0);
+  resoudre(p, { r: 2, c: 5 }, { tir: 'bombe' });
+  assert.equal(rangeesPlafond(p), 2, 'la bombe n’abîme pas le plafond');
+  const q = plateauVide();
+  q[RANGEES_MAX - 2][0] = b(0);
+  assert.equal(descendre(q), true, 'des bonbons poussés au-delà du bas : perdu');
+});
+
+test('génération : un niveau sur quatre à partir du 9 a un plafond qui descend, et reste gagnable', () => {
+  assert.equal(parametres(8).plafond, 0);
+  for (const n of [9, 13, 25]) {
+    const L = genererNiveau(n);
+    assert.equal(L.plafond, 7, `niveau ${n}`);
+    assert.ok(L.variante >= 0, `niveau ${n} vérifié`);
+    assert.ok(simuler(L, 4321 + n).gagne, `niveau ${n} gagné par une autre partie automatique`);
+  }
 });

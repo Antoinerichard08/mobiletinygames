@@ -30,6 +30,8 @@
 }
 .bl-infos { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .bl-objectif { font-size: .95rem; opacity: .95; }
+.bl-plafond { display: block; width: max-content; margin-top: 2px; padding: 0 8px; border-radius: 999px; font-weight: 700; font-size: .85rem; background: #6B3E1E; color: #FFD7A8; }
+.bl-plafond.proche { background: #C0262D; color: #fff; }
 .bl-score b { font-size: 1.3rem; }
 .bl-serie { background: #2DBB64; border-radius: 999px; padding: 0 8px; font-weight: 700; font-size: .9rem; }
 .bl-or { background: linear-gradient(180deg, #FFF2A0, #F2A81D); color: #6A3600; border-radius: 999px; padding: 0 8px; font-weight: 700; font-size: .9rem; }

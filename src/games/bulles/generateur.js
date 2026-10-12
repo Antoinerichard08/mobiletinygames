@@ -7,13 +7,14 @@
 //  3. un remplissage en grappes de même couleur (plus grosses = plus facile) ;
 //  4. des bulles spéciales qui arrivent peu à peu : poussins, bombes, « +3 », pierres, étoiles, glace,
 //     éclairs, cerises (à faire tomber), caméléons (ils changent de couleur à chaque tir), bicolores, mystères ;
+//     Certains niveaux ont un plafond qui descend d'un cran (deux rangées) tous les `plafond` tirs ;
 //  5. un joueur automatique joue le niveau plusieurs fois : s'il échoue, on refait le niveau ;
 //     le nombre de bulles données et les paliers de score des 3 étoiles se calent sur ses parties.
 import { aleaGraine, melanger } from '../../core/outils.js';
 import {
   COLONNES, plateauVide, cloner, voisines, cases, largeurRangee, couleursPresentes, trajectoire,
   resoudre, reussi, debordement, ANGLE_MIN, ANGLE_MAX, aCouleur, charge, SEUIL_BONUS, points, reussite, BONUS_RESTE,
-  changerCameleons, nbFruits, SERIE_OR, TIRS_OR,
+  changerCameleons, nbFruits, SERIE_OR, TIRS_OR, descendre,
 } from './moteur.js';
 
 export const NOMS_FORMES = ['plein', 'pyramide', 'losange', 'vagues', 'arche', 'coeur', 'colonnes', 'sablier', 'damier'];
@@ -21,9 +22,12 @@ export const NOMS_FORMES = ['plein', 'pyramide', 'losange', 'vagues', 'arche', '
 /** Paramètres d'un niveau (n ≥ 1). */
 export function parametres(n) {
   const borne = (x, max) => Math.max(0, Math.min(max, x));
+  // un niveau sur quatre à partir du 9 : le plafond descend tous les 7 tirs (et le plateau commence plus bas)
+  const plafond = n >= 9 && n % 4 === 1 ? 7 : 0;
   return {
     couleurs: n <= 3 ? 3 : n <= 10 ? 4 : n <= 25 ? 5 : 6,
-    rangees: Math.min(9, 4 + Math.floor((n + 1) / 3)),
+    rangees: Math.min(plafond ? 6 : 9, 4 + Math.floor((n + 1) / 3)),
+    plafond,
     grappe: n <= 5 ? [3, 5] : n <= 15 ? [2, 4] : n <= 30 ? [2, 3] : [1, 3], // grosses grappes = plus facile
     // trois sortes de niveaux : vider le plateau, libérer les poussins, faire tomber les cerises
     objectif: n >= 3 && n % 3 === 0 ? 'liberer' : n >= 7 && n % 5 === 2 ? 'cueillir' : 'vider',
@@ -211,6 +215,7 @@ export function simuler(niveau, graine, maxTirs = 150) {
     offerts += ev.tirsBonus;
     if (reussi(p, niveau.objectif)) return { gagne: true, tirs: Math.max(1, tir - offerts), score };
     if (debordement(p)) return { gagne: false, tirs: tir, score };
+    if (niveau.plafond && tir % niveau.plafond === 0 && descendre(p)) return { gagne: false, tirs: tir, score };
     changerCameleons(p);
     jauge += charge(ev, rebonds);
     courante = suivante;
@@ -232,7 +237,7 @@ export function genererNiveau(n, { essais = 6, parties = 2 } = {}) {
   let dernier = null;
   for (let v = 0; v < essais; v++) {
     const { p, forme: nom } = fabriquer(n, v, P);
-    const niveau = { n, plateau: p, objectif: P.objectif, couleurs: P.couleurs, forme: nom };
+    const niveau = { n, plateau: p, objectif: P.objectif, couleurs: P.couleurs, forme: nom, plafond: P.plafond };
     if (P.objectif === 'liberer' && ![...cases(p)].some(([, , b]) => b.poussin)) continue;
     if (P.objectif === 'cueillir' && !nbFruits(p)) continue;
     const resultats = [];
