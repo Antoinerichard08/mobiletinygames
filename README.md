@@ -123,6 +123,25 @@ npm start
 Puis ouvrir http://localhost:8080. En local, le service worker est désactivé pour voir ses modifications
 tout de suite ; ajoutez `?sw=1` à l'adresse pour tester le mode hors ligne.
 
+### Apparences des cartes du Solitaire (skins)
+
+Le Solitaire propose plusieurs apparences, à choisir dans la fenêtre « Nouvelle partie » (rubrique « Les cartes ») ;
+le choix est mémorisé sur le téléphone. « Classique » est dessinée par le code ; les autres sont des **planches
+d'images** dans `assets/cartes/`.
+
+- **Le gabarit** est dans `design/cartes/` : `gabarit-reperes.png` (les zones à respecter et le mode d'emploi),
+  `gabarit-vierge.png` (prêt à peindre) et `classique.png` (l'apparence actuelle en images, comme base à retoucher).
+- **La grille** : 13 colonnes (As → Roi) × 5 rangées (♠ ♥ ♦ ♣, puis le dos dans la première case de la 5e rangée),
+  des cases de 5 × 7 sans marge (300 × 420 px dans le gabarit ; toute taille marche si la grille est gardée).
+- **À respecter** : la valeur dans le coin en haut à gauche (30 % de la largeur, 21 % de la hauteur), car c'est tout ce
+  qu'on voit d'une carte dans une colonne tassée ; la bande de gauche (30 %) dans la défausse à trois cartes ;
+  les coins sont arrondis par le jeu.
+- **Ajouter une apparence** : déposer la planche (PNG ou WebP, environ 240 × 336 px par case suffisent) dans
+  `assets/cartes/`, ajouter une ligne dans `src/games/solitaire/apparences.js`, puis `npm run nouvelle-version -- X.Y.Z`
+  (la planche sera alors disponible hors ligne).
+- `npm run cartes` régénère le gabarit et l'apparence de démonstration « Crème et rouge » à partir de
+  `design/cartes/planche.html`, avec Chrome ou Edge sans fenêtre.
+
 ### Mode développeur (étoiles infinies)
 
 Pour tout tester sans jouer des heures, ouvrez l'appli avec **`?dev=1`** à la fin de l'adresse, par exemple

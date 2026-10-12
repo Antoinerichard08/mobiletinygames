@@ -43,6 +43,10 @@
   font-family: var(--font-display); font-size: calc(var(--cw) * .62); opacity: .9;
 }
 .card.under { pointer-events: none; }
+/* une apparence en images (apparences.js) : chaque carte est une case de la planche 13 × 5 */
+.card.img, .card.img.back {
+  background: var(--planche) no-repeat; background-size: 1300% 500%; border: none;
+}
 
 .card.sel { outline: 3px solid var(--gold); outline-offset: -1px; z-index: 5; translate: 0 calc(var(--cw) * -0.08); box-shadow: 0 6px 14px rgba(0, 0, 0, .35); }
 .card.hint, .slot.hint { outline: 4px dashed var(--gold); outline-offset: -2px; z-index: 6; }
@@ -67,6 +71,12 @@ body:has(.sol-body) { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
 .btn.choix b { font-size: 1.2rem; }
 .btn.choix small { font-weight: 400; color: var(--muted); font-size: .95rem; }
 .btn.choix.actuel { border-color: var(--brand); }
+.sol-label { font-weight: 700; margin: 6px 0 0; }
+.choix-apparences { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+.btn.apparence { flex-direction: column; gap: 6px; padding: 10px 8px; min-height: 56px; }
+.btn.apparence.actuel { border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 30%, transparent); }
+.btn.apparence .mini { --cw: 40px; --ch: 56px; position: relative; display: block; width: calc(var(--cw) * 1.62); height: var(--ch); }
+.btn.apparence .mini .card { top: 0; }
 
 @media (prefers-reduced-motion: no-preference) {
   .card.sel { transition: translate .15s ease-out; }

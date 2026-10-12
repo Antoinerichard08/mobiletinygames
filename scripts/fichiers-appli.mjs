@@ -25,6 +25,7 @@ export function listerFichiersAppli() {
       ...parcourir('assets/fonts', (n) => n.endsWith('.woff2')),
       ...parcourir('assets/icons', (n) => n.endsWith('.png')),
       ...parcourir('assets/ile', (n) => n.endsWith('.png')),
+      ...parcourir('assets/cartes', (n) => n.endsWith('.png') || n.endsWith('.webp')), // apparences du Solitaire
       ...parcourir('data', (n) => n.endsWith('.json')),
       ...parcourir('src', () => true),
     ].sort(),

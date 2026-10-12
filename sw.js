@@ -9,6 +9,7 @@ const CACHE = `salon-de-jeux-${VERSION}`;
 const FICHIERS = [
   'index.html',
   'manifest.webmanifest',
+  'assets/cartes/creme.png',
   'assets/fonts/atkinson-hyperlegible-400.woff2',
   'assets/fonts/atkinson-hyperlegible-700.woff2',
   'assets/fonts/young-serif-400.woff2',
@@ -57,6 +58,7 @@ const FICHIERS = [
   'src/games/puzzle/index.js',
   'src/games/puzzle/moteur.js',
   'src/games/puzzle/puzzle.css',
+  'src/games/solitaire/apparences.js',
   'src/games/solitaire/donne-worker.js',
   'src/games/solitaire/donne.js',
   'src/games/solitaire/index.js',

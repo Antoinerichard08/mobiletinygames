@@ -12,7 +12,8 @@
     "polices": "node scripts/copier-polices.mjs",
     "sprites": "node scripts/generer-sprites.mjs",
     "site": "node scripts/preparer-site.mjs _site",
-    "nouvelle-version": "node scripts/nouvelle-version.mjs"
+    "nouvelle-version": "node scripts/nouvelle-version.mjs",
+    "cartes": "node scripts/generer-cartes.mjs"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.3",

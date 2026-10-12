@@ -13,6 +13,7 @@ import {
   piocher, destinationAuto, monterCartes, estGagne, indice, fondationPour, peutFinirSeul,
 } from './moteur.js';
 import { preparerDonne } from './donne.js';
+import { APPARENCES, apparence, positionCss } from './apparences.js';
 
 chargerStyle(new URL('./solitaire.css', import.meta.url));
 
@@ -35,6 +36,9 @@ let conseil = null;
 let occupe = false; // animation ou préparation en cours : on ignore les touches
 let prochaine = null; // { niveau, promesse } : donne préparée à l'avance
 let observateur = null;
+let skin = apparence(lire('solitaire.apparence', 'classique')); // l'apparence des cartes (voir apparences.js)
+const urlPlanche = (a) => new URL(`../../../${a.planche}`, import.meta.url).href;
+const varPlanche = (a) => (a.planche ? `--planche: url('${urlPlanche(a)}')` : '');
 let surveillance = null; // la hauteur des commandes change (message, « Tout ranger ») : le tapis se recale
 
 const cleSauvegarde = () => (options.defi ? `solitaire.defi.${options.defi.id}` : 'solitaire');
@@ -108,8 +112,12 @@ async function distribuer() {
 
 // ---------- Affichage ----------
 
-function carteHtml(c, attrs, style, classes = '') {
+function carteHtml(c, attrs, style, classes = '', a = skin) {
   const cle = `data-cle="${cleCarte(c)}"`;
+  // une apparence en images : la carte est une case de la planche
+  if (a.planche) {
+    return `<div class="card img ${c.up ? '' : 'back'} ${classes}" ${cle} ${attrs} style="${style};background-position:${positionCss(c)}"${c.up ? ` aria-label="${nomCarte(c)}"` : ''}></div>`;
+  }
   if (!c.up) return `<div class="card back ${classes}" ${cle} ${attrs} style="${style}"></div>`;
   const figure = c.r > 10 ? `<span class="fig">${RANGS[c.r]}</span>` : '';
   return `<div class="card ${estRouge(c) ? 'red' : ''} ${c.r > 10 ? 'face' : ''} ${classes}" ${cle} ${attrs} style="${style}" aria-label="${nomCarte(c)}">`
@@ -169,6 +177,8 @@ function dessiner() {
   const table = $('#sol-table', racine);
   table.style.minHeight = `${Math.round(m.hauteurDispo)}px`; // le tapis va jusqu'en bas de l'écran
   table.style.setProperty('--cw', `${m.cw}px`);
+  if (skin.planche) table.style.setProperty('--planche', `url('${urlPlanche(skin)}')`);
+  else table.style.removeProperty('--planche');
   table.style.setProperty('--gap', `${m.gap}px`);
   table.style.width = paysage() ? `${7 * m.cw + 6 * m.gap + 20}px` : '';
 
@@ -454,11 +464,24 @@ function choisirNiveau() {
         <div class="choix-niveaux">
           ${Object.keys(NIVEAUX).map((n) => `<button class="btn choix ${n === E?.niveau ? 'actuel' : ''}" data-n="${n}"><b>${NOMS[n]}</b><small>${DESCRIPTIONS[n]}</small></button>`).join('')}
         </div>
+        <p class="sol-label">Les cartes</p>
+        <div class="choix-apparences">
+          ${APPARENCES.map((a) => `<button class="btn apparence ${a.id === skin.id ? 'actuel' : ''}" data-apparence="${a.id}" aria-pressed="${a.id === skin.id}">
+            <span class="mini" style="${varPlanche(a)}">${carteHtml({ s: 1, r: 1, up: true }, '', 'left:0', '', a)}${carteHtml({ s: 0, r: 13, up: false }, '', 'left:calc(var(--cw) * .62)', '', a)}</span>
+            <span>${a.nom}</span></button>`).join('')}
+        </div>
         <button class="btn" data-n="">Annuler</button>
       </div>`;
     document.body.append(fond);
     animer(fond.firstElementChild, [{ transform: 'translateY(40px)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 300 });
     fond.addEventListener('click', (e) => {
+      const ap = e.target.closest('[data-apparence]');
+      if (ap) {
+        // on change d'apparence tout de suite (la fenêtre reste ouverte)
+        fond.querySelectorAll('[data-apparence]').forEach((x) => { x.classList.toggle('actuel', x === ap); x.setAttribute('aria-pressed', String(x === ap)); });
+        choisirApparence(ap.dataset.apparence);
+        return;
+      }
       const b = e.target.closest('button[data-n]');
       if (!b && e.target !== fond) return;
       fond.remove();
@@ -466,6 +489,19 @@ function choisirNiveau() {
     });
     fond.querySelector('.choix').focus();
   });
+}
+
+/** Change l'apparence des cartes (l'image est chargée avant, pour ne rien voir clignoter). */
+async function choisirApparence(id) {
+  const a = apparence(id);
+  if (a.planche) {
+    const image = new Image();
+    image.src = urlPlanche(a);
+    await image.decode().catch(() => {});
+  }
+  skin = a;
+  ecrire('solitaire.apparence', a.id);
+  if (!occupe) dessiner();
 }
 
 function construire() {
@@ -526,6 +562,7 @@ export default {
   monter(conteneur, opts = {}) {
     racine = conteneur;
     options = opts;
+    skin = apparence(lire('solitaire.apparence', 'classique'));
     charger();
     if (E && options.defi && E.niveau !== options.defi.niveau) E = null;
     sel = null;

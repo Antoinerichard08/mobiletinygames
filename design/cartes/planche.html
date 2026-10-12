@@ -1,0 +1,106 @@
+<!doctype html>
+<!--
+  Planches de cartes du Solitaire, photographiées par scripts/generer-cartes.mjs (Chrome sans fenêtre).
+  planche.html?mode=reperes|vierge|classique|creme&cw=300
+  La grille : 13 colonnes (As → Roi) × 5 rangées (♠ ♥ ♦ ♣, puis le dos dans la 1re case de la 5e rangée).
+  Chaque case fait cw × 1,4 cw, sans marge entre les cases. Le jeu découpe la planche quelle que soit sa taille.
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../src/styles/base.css">
+<link rel="stylesheet" href="../../src/games/solitaire/solitaire.css">
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; }
+  body { width: calc(13 * var(--cw)); height: calc(5 * var(--ch)); overflow: hidden; }
+  .grille { display: grid; grid-template-columns: repeat(13, var(--cw)); grid-template-rows: repeat(5, var(--ch)); }
+  .case { position: relative; width: var(--cw); height: var(--ch); }
+  .case .card { top: 0; left: 0; box-shadow: none; }
+  /* au jeu, les rayures du dos font 5 px pour une carte de ~46 px : on garde la même proportion */
+  .case .card.back {
+    background:
+      radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .22) 0 18%, transparent 19%),
+      repeating-linear-gradient(45deg, var(--back-a) 0 calc(var(--cw) * .11), var(--back-b) calc(var(--cw) * .11) calc(var(--cw) * .22));
+  }
+
+  /* ---- apparence de démonstration « Crème et rouge » ---- */
+  .creme .card { background: linear-gradient(160deg, #FFFDF5, #FFF6E0 60%, #F1E2BC); border: calc(var(--cw) * .015) solid #C9A24A; }
+  .creme .card.red { color: #B3202A; }
+  .creme .card .fig { color: #8A5A00; }
+  .creme .card.red .fig { color: #B3202A; }
+  .creme .case .card.back {
+    background:
+      radial-gradient(circle at 50% 50%, #F2C94C 0 14%, #B3202A 15% 19%, transparent 20%),
+      repeating-linear-gradient(-45deg, #A51C25 0 calc(var(--cw) * .09), #C9303A calc(var(--cw) * .09) calc(var(--cw) * .18));
+    border: calc(var(--cw) * .07) solid #FFF6E0;
+  }
+
+  /* ---- gabarits : une carte blanche par case, le nom de la carte en filigrane ---- */
+  .vide {
+    position: absolute; inset: 0; border-radius: calc(var(--cw) * .14); background: #fff;
+    border: 2px solid #C8CDD3; box-sizing: border-box;
+  }
+  .nom {
+    position: absolute; inset: 0; display: grid; place-items: center; font: 700 calc(var(--cw) * .3) var(--font-body);
+    color: rgba(27, 31, 36, .12);
+  }
+  .nom.rouge { color: rgba(192, 38, 45, .16); }
+  .reperes .case, .vierge .case { border-radius: calc(var(--cw) * .14); overflow: hidden; }
+  /* les zones à respecter */
+  .zone { position: absolute; box-sizing: border-box; }
+  .zone.defausse { left: 0; top: 0; width: 30%; height: 100%; background: rgba(255, 150, 0, .10); border-right: 3px dashed #E08A00; }
+  .zone.colonne { left: 0; top: 0; width: 100%; height: calc(var(--cw) * .5); background: rgba(31, 122, 224, .10); border-bottom: 3px dashed #1F7AE0; }
+  .zone.valeur { left: 0; top: 0; width: calc(var(--cw) * .3); height: calc(var(--cw) * .3); background: rgba(224, 33, 138, .14); border: 3px solid #E0218A; }
+  .zone.coins { inset: 0; border-radius: calc(var(--cw) * .14); border: 3px dotted #6B7280; }
+  .legende {
+    grid-column: 2 / span 12; position: relative; padding: calc(var(--cw) * .1) calc(var(--cw) * .2);
+    font: 400 calc(var(--cw) * .085) / 1.35 var(--font-body); color: #1B1F24; background: #FFFDF5;
+    border: 3px solid #C8CDD3; border-radius: calc(var(--cw) * .1); box-sizing: border-box;
+  }
+  .legende h1 { font-family: var(--font-display); font-weight: 400; font-size: calc(var(--cw) * .15); margin: 0 0 .2em; }
+  .legende ul { margin: 0; padding-left: 1.2em; columns: 2; column-gap: 2em; }
+  .legende li { break-inside: avoid; margin-bottom: .25em; }
+  .legende i { display: inline-block; width: .9em; height: .9em; border-radius: .15em; vertical-align: -.1em; margin-right: .3em; }
+</style>
+</head>
+<body>
+<div class="grille" id="grille"></div>
+<script>
+  const params = new URLSearchParams(location.search);
+  const mode = params.get('mode') || 'reperes';
+  const cw = Number(params.get('cw')) || 300;
+  document.documentElement.style.setProperty('--cw', `${cw}px`);
+  document.documentElement.style.setProperty('--ch', `${cw * 1.4}px`);
+  document.body.classList.add(mode);
+
+  const SYMBOLES = ['♠', '♥', '♦', '♣'];
+  const RANGS = [null, 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'V', 'D', 'R'];
+  const rouge = (s) => s === 1 || s === 2;
+  // la même carte que dans le jeu (carteHtml, src/games/solitaire/index.js)
+  const carte = (s, r) => `<div class="card ${rouge(s) ? 'red' : ''} ${r > 10 ? 'face' : ''}"><span class="idx"><b>${RANGS[r]}</b><span>${SYMBOLES[s]}</span></span>${r > 10 ? `<span class="fig">${RANGS[r]}</span>` : ''}<span class="big">${SYMBOLES[s]}</span></div>`;
+  const reperes = mode === 'reperes'
+    ? '<span class="zone defausse"></span><span class="zone colonne"></span><span class="zone valeur"></span><span class="zone coins"></span>' : '';
+  const gabarit = (nom, estRouge) => `<span class="vide"></span><span class="nom ${estRouge ? 'rouge' : ''}">${nom}</span>${reperes}`;
+  const dessin = mode === 'classique' || mode === 'creme';
+
+  let html = '';
+  for (let s = 0; s < 4; s++) {
+    for (let r = 1; r <= 13; r++) html += `<div class="case">${dessin ? carte(s, r) : gabarit(RANGS[r] + SYMBOLES[s], rouge(s))}</div>`;
+  }
+  html += `<div class="case">${dessin ? '<div class="card back"></div>' : gabarit('DOS', false)}</div>`;
+  if (mode === 'reperes') {
+    html += `<div class="legende"><h1>Gabarit des cartes du Solitaire</h1><ul>
+      <li>13 colonnes (As → Roi) × 4 rangées (♠ ♥ ♦ ♣), puis le <b>dos</b> en bas à gauche. Le reste de cette rangée est ignoré.</li>
+      <li>Chaque case : <b>5 × 7</b> (ici ${cw} × ${cw * 1.4} px), sans marge entre les cases. Toute taille marche si la grille est gardée.</li>
+      <li><i style="background:#E0218A"></i><b>Valeur</b> : la valeur (et si possible la couleur ♠ ♥ ♦ ♣) doit tenir ici. C'est tout ce qu'on voit quand une colonne est très tassée.</li>
+      <li><i style="background:#1F7AE0"></i><b>Colonne</b> : ce qu'on voit d'une carte posée sur une autre, en temps normal.</li>
+      <li><i style="background:#E08A00"></i><b>Défausse</b> : à trois cartes, on ne voit que cette bande de gauche des cartes du dessous.</li>
+      <li><i style="background:#6B7280"></i><b>Coins</b> : arrondis par le jeu (0,14 × la largeur). Peignez la carte entière, ils seront coupés.</li>
+      <li>Rouge et noir bien distincts, chiffres contrastés : ce sont des yeux de maman qui lisent.</li>
+      <li>Exporter en PNG, sans ce calque de repères, dans <b>assets/cartes/</b>, puis l'ajouter à la liste <b>src/games/solitaire/apparences.js</b>.</li>
+    </ul></div>`;
+  }
+  document.getElementById('grille').innerHTML = html;
+</script>
+</body>
+</html>
