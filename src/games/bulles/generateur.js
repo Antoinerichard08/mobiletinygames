@@ -6,13 +6,14 @@
 //  2. une forme (pyramide, losange, cœur, vagues, arche…) accrochée au plafond ;
 //  3. un remplissage en grappes de même couleur (plus grosses = plus facile) ;
 //  4. des bulles spéciales qui arrivent peu à peu : poussins, bombes, « +3 », pierres, étoiles, glace,
-//     éclairs, bicolores, mystères ;
+//     éclairs, cerises (à faire tomber), caméléons (ils changent de couleur à chaque tir), bicolores, mystères ;
 //  5. un joueur automatique joue le niveau plusieurs fois : s'il échoue, on refait le niveau ;
 //     le nombre de bulles données et les paliers de score des 3 étoiles se calent sur ses parties.
 import { aleaGraine, melanger } from '../../core/outils.js';
 import {
   COLONNES, plateauVide, cloner, voisines, cases, largeurRangee, couleursPresentes, trajectoire,
   resoudre, reussi, debordement, ANGLE_MIN, ANGLE_MAX, aCouleur, charge, SEUIL_BONUS, points, reussite, BONUS_RESTE,
+  changerCameleons, nbFruits, SERIE_OR, TIRS_OR,
 } from './moteur.js';
 
 export const NOMS_FORMES = ['plein', 'pyramide', 'losange', 'vagues', 'arche', 'coeur', 'colonnes', 'sablier', 'damier'];
@@ -24,8 +25,11 @@ export function parametres(n) {
     couleurs: n <= 3 ? 3 : n <= 10 ? 4 : n <= 25 ? 5 : 6,
     rangees: Math.min(9, 4 + Math.floor((n + 1) / 3)),
     grappe: n <= 5 ? [3, 5] : n <= 15 ? [2, 4] : n <= 30 ? [2, 3] : [1, 3], // grosses grappes = plus facile
-    objectif: n >= 3 && n % 3 === 0 ? 'liberer' : 'vider',
+    // trois sortes de niveaux : vider le plateau, libérer les poussins, faire tomber les cerises
+    objectif: n >= 3 && n % 3 === 0 ? 'liberer' : n >= 7 && n % 5 === 2 ? 'cueillir' : 'vider',
     poussins: n >= 3 && n % 3 === 0 ? Math.min(5, 2 + Math.floor(n / 9)) : 0,
+    fruits: n >= 7 && n % 3 !== 0 && n % 5 === 2 ? Math.min(6, 2 + Math.floor(n / 12)) : 0,
+    cameleons: n >= 14 ? borne(Math.floor((n - 9) / 5), 5) : 0,
     bombes: n >= 4 ? borne(1 + Math.floor((n - 4) / 10), 3) : 0,
     plus: n >= 5 ? borne(1 + Math.floor(n / 15), 3) : 0,
     pierres: n >= 6 ? borne(Math.floor((n - 3) / 4), 6) : 0,
@@ -34,7 +38,8 @@ export function parametres(n) {
     eclairs: n >= 12 ? borne(1 + Math.floor((n - 12) / 12), 3) : 0,
     bicolores: n >= 16 ? borne(Math.floor((n - 12) / 4), 6) : 0,
     mysteres: n >= 22 ? borne(Math.floor((n - 18) / 4), 6) : 0,
-    marge: n <= 5 ? 1.7 : n <= 15 ? 1.5 : n <= 30 ? 1.35 : 1.25, // bulles données = celles du joueur automatique × marge
+    // bulles données = celles du joueur automatique × marge (il vise parfaitement, nous avons une ligne de visée courte)
+    marge: n <= 5 ? 1.8 : n <= 15 ? 1.65 : n <= 30 ? 1.5 : 1.4,
   };
 }
 
@@ -105,7 +110,7 @@ function fabriquer(n, variante, P) {
   nettoyer(p);
   // bulles spéciales, posées sur des bulles de couleur ordinaires
   const libres = (bas = false) => melanger([...cases(p)]
-    .filter(([r, , b]) => b.type === 'bulle' && !b.poussin && !b.glace && !b.mystere && !b.plus && b.k2 === undefined && (!bas || r > 0))
+    .filter(([r, , b]) => b.type === 'bulle' && !b.poussin && !b.glace && !b.mystere && !b.plus && !b.cameleon && b.k2 === undefined && (!bas || r > 0))
     .map(([r, c]) => [r, c]), alea);
   // au plus 40 % de bulles spéciales, pour qu'il reste de vraies couleurs à jouer
   let reste = Math.floor([...cases(p)].length * 0.4);
@@ -116,6 +121,10 @@ function fabriquer(n, variante, P) {
   prendre(libres(true), P.etoiles).forEach(([r, c]) => { p[r][c] = { type: 'etoile' }; });
   prendre(libres(true), P.bombes).forEach(([r, c]) => { p[r][c] = { type: 'bombe' }; });
   prendre(libres(true), P.eclairs).forEach(([r, c]) => { p[r][c] = { type: 'eclair' }; });
+  // les cerises plutôt vers le bas (rangée 2 au moins) : on les décroche en faisant éclater ce qui les tient
+  const basses = libres(true).filter(([r]) => r >= 2).sort((a, b) => b[0] - a[0]).slice(0, Math.max(P.fruits * 3, 1));
+  prendre(melanger(basses, alea), P.fruits).forEach(([r, c]) => { p[r][c] = { type: 'fruit' }; });
+  prendre(libres(), P.cameleons).forEach(([r, c]) => { p[r][c].cameleon = true; });
   prendre(libres(), P.glaces).forEach(([r, c]) => { p[r][c].glace = true; });
   prendre(libres(), P.bicolores).forEach(([r, c]) => {
     const autres = [...Array(P.couleurs).keys()].filter((x) => x !== p[r][c].k);
@@ -152,6 +161,7 @@ function noter(p, cible, tiree, objectif) {
   const q = cloner(p);
   const ev = resoudre(q, cible, tiree);
   let s = ev.eclatees.length * 10 + ev.tombees.length * 16 + ev.poussins * 60 + (ev.glaces.length + ev.reveles.length) * 4 + ev.tirsBonus * 12;
+  s += ev.tombees.filter((t) => t.b.type === 'fruit').length * 60 + ev.eclatees.filter((t) => t.b.type === 'fruit').length * 40;
   if (!ev.eclatees.length && tiree.k !== undefined) {
     // pas d'éclatement : on préfère poser à côté de sa couleur, et le plus haut possible
     s += voisines(cible.r, cible.c).filter(([a, b]) => aCouleur(p[a][b], tiree.k)).length * 3;
@@ -187,18 +197,22 @@ export function tirerCouleur(p, alea) {
 export function simuler(niveau, graine, maxTirs = 150) {
   const alea = aleaGraine(graine);
   const p = cloner(niveau.plateau);
-  let courante = tirerCouleur(p, alea), suivante = tirerCouleur(p, alea), jauge = 0, bonus = 0, score = 0, serie = 0, offerts = 0;
+  let courante = tirerCouleur(p, alea), suivante = tirerCouleur(p, alea), jauge = 0, bonus = 0, score = 0, serie = 0, offerts = 0, or = 0;
   for (let tir = 1; tir <= maxTirs; tir++) {
     const coup = meilleurCoup(p, courante, suivante, niveau.objectif, alea);
     if (!coup) return { gagne: false, tirs: tir, score };
     if (coup.echange) [courante, suivante] = [suivante, courante];
+    const { rebonds } = trajectoire(p, coup.angle);
     const ev = resoudre(p, coup.cible, courante);
     serie = reussite(ev) ? serie + 1 : 0;
-    score += points(ev, serie);
+    score += points(ev, serie, { rebonds, or: or > 0 });
+    if (or > 0) or--;
+    if (reussite(ev) && serie % SERIE_OR === 0) or = TIRS_OR;
     offerts += ev.tirsBonus;
     if (reussi(p, niveau.objectif)) return { gagne: true, tirs: Math.max(1, tir - offerts), score };
     if (debordement(p)) return { gagne: false, tirs: tir, score };
-    jauge += charge(ev);
+    changerCameleons(p);
+    jauge += charge(ev, rebonds);
     courante = suivante;
     if (jauge >= SEUIL_BONUS) { jauge = 0; courante = { tir: bonus++ % 2 ? 'arc' : 'bombe' }; }
     suivante = tirerCouleur(p, alea);
@@ -220,6 +234,7 @@ export function genererNiveau(n, { essais = 6, parties = 2 } = {}) {
     const { p, forme: nom } = fabriquer(n, v, P);
     const niveau = { n, plateau: p, objectif: P.objectif, couleurs: P.couleurs, forme: nom };
     if (P.objectif === 'liberer' && ![...cases(p)].some(([, , b]) => b.poussin)) continue;
+    if (P.objectif === 'cueillir' && !nbFruits(p)) continue;
     const resultats = [];
     for (let s = 0; s < parties; s++) resultats.push(simuler(niveau, n * 31 + v * 7 + s));
     dernier = { niveau, resultats };
@@ -232,7 +247,7 @@ export function genererNiveau(n, { essais = 6, parties = 2 } = {}) {
 /** Nombre de bulles données et paliers de score, d'après les parties du joueur automatique. */
 function calibrer(niveau, resultats, marge, variante) {
   const tirs = mediane(resultats.map((r) => r.tirs));
-  niveau.tirs = Math.max(10, Math.ceil(tirs * marge) + 3);
+  niveau.tirs = Math.max(12, Math.ceil(tirs * marge) + 3);
   niveau.parfait = tirs;
   niveau.bien = Math.ceil(tirs * 1.3);
   // score de référence : celui du joueur automatique, plus le bonus des bulles qu'il n'aurait pas utilisées

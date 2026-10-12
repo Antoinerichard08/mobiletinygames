@@ -57,12 +57,17 @@ Pour une nouvelle version : refaire les mêmes étapes, le bouton s'appellera **
   - **Agrandir** : dans « Construire », onglet « L'île ». Les cases d'eau au bord de l'île sont marquées d'un « + » :
     touchez-en une, puis la coche ✓. Elle sort de l'eau, en herbe. Une case à la fois, comme on veut.
   - Une île très belle en fait apparaître une nouvelle, cachée jusque-là dans les nuages !
-- **Bulles** : posez le doigt là où vous voulez envoyer la bulle (une ligne montre le chemin), levez-le pour tirer.
+- **Bulles** : posez le doigt là où vous voulez envoyer la bulle (une ligne pointillée montre le début du chemin,
+  de plus en plus courte au fil des niveaux ; « Ligne de visée : longue » dans la pause la rallonge), levez-le pour tirer.
   Trois bulles de la même couleur éclatent, et tout ce qui ne tient plus tombe. Chaque couleur a son symbole
   (cœur, losange, triangle, étoile, rond, carré). S'il manque des bulles, 5 de plus sont offertes une fois par niveau.
   Au fil des niveaux arrivent des bonbons spéciaux : **+3** (3 bulles en plus), **étoile** (fait disparaître toute
   une couleur), **éclair** (vide sa rangée), **glace** (il faut la toucher deux fois), bonbons **à deux couleurs** et
-  **mystère**. Plus on enchaîne les éclats, plus le score monte (jusqu'à ×3). Les 3 étoiles du haut se remplissent
+  **mystère**, **caméléons** (ils changent de couleur après chaque tir) et des niveaux où il faut **faire tomber les cerises**.
+  Ce qui tombe atterrit dans **cinq bocaux** : ceux des bords rapportent le plus (× 3). Un **ricochet** sur le bord avant
+  d'éclater vaut × 1,5, et cinq tirs réussis d'affilée rendent les bocaux **en or** (× 2 pendant trois tirs). De petits sons
+  accompagnent le jeu (on peut les couper dans la pause).
+  Plus on enchaîne les éclats, plus le score monte (jusqu'à ×3). Les 3 étoiles du haut se remplissent
   avec le score : à la fin, « Rejouer pour faire mieux » permet de retenter sa chance. Le bouton ⏸ ouvre la pause.
 - **Puzzle** : cinq tableaux de grands peintres attendent (3 petits de 12 pièces, 1 moyen de 24, 1 grand de 48).
   On y place ses **pièces de puzzle** : le tableau, flou au début, se précise. Quand il a toutes ses pièces, touchez
@@ -176,8 +181,12 @@ une appli légère, rapide sur un vieux téléphone et sous licence MIT, leurs t
   de couleurs, pierres, glace, bombes, poussins à libérer) puis **joués par un joueur automatique** : un niveau n'est
   gardé que s'il est gagnable, et le nombre de bulles données comme les étoiles se calent sur ses parties.
   Les étoiles se gagnent **au score** (paliers calculés à partir du score médian du joueur automatique). Les bonbons
-  spéciaux arrivent progressivement (+3 dès le niveau 5, étoile 8, glace 10, éclair 12, bicolore 16, mystère 22) et ne
-  dépassent jamais 40 % des cases. Le skin « bonbons » est entièrement **dessiné par le code** (`rendu.js`, mis en
+  spéciaux arrivent progressivement (+3 dès le niveau 5, cerises 7, étoile 8, glace 10, éclair 12, caméléon 14,
+  bicolore 16, mystère 22) et ne dépassent jamais 40 % des cases. Mécaniques reprises du genre : les bocaux du premier
+  *Bubble Witch Saga*, le « Hot Pot » de *Bubble Witch 2* (6 coups d'affilée = points doublés), les niveaux de collecte
+  de *Bubble Witch 3*, les tirs en ricochet de *Panda Pop*. La visée est libre : la bulle ne se cale dans sa case qu'en
+  arrivant ; la ligne de visée ne montre ni la case d'arrivée ni, au-delà d'une certaine longueur, la suite du chemin.
+  Les sons sont **synthétisés** (Web Audio, `sons.js`) : aucun fichier audio. Le skin « bonbons » est entièrement **dessiné par le code** (`rendu.js`, mis en
   cache dans des `OffscreenCanvas`) : les visuels de référence étaient payants, aucune image n'en est reprise.
 - **Aventure** : le modèle de la « carte saga » popularisé par Candy Crush, avec un rythme quotidien.
 - **Pièces de puzzle et jeu Puzzle** : une boucle de collection à long terme.

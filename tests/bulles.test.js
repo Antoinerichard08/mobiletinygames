@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   plateauVide, voisines, centre, valide, largeurRangee, trajectoire, resoudre, reussi, debordement, couleursPresentes,
-  cases, cloner, RANGEES_MAX, LARGEUR, nbPoussins, points, multiplicateur,
+  cases, cloner, RANGEES_MAX, LARGEUR, nbPoussins, points, multiplicateur, BOCAUX, bocalDe, pointsChute, changerCameleons, nbFruits,
 } from '../src/games/bulles/moteur.js';
 import { genererNiveau, simuler, parametres, etoilesNiveau, meilleurCoup, cibles, niveauPourDefi } from '../src/games/bulles/generateur.js';
 
@@ -22,9 +22,12 @@ test('grille hexagonale : rangées de 11 et 10 bulles, 6 voisines au plus', () =
 
 test('trajectoire : tout droit vers le haut, on s’accroche au plafond', () => {
   const p = plateauVide();
-  const { cible, points: pts } = trajectoire(p, Math.PI / 2);
+  const { cible, points: pts, rebonds, contact } = trajectoire(p, Math.PI / 2);
   assert.deepEqual(cible, { r: 0, c: 5 });
-  assert.equal(pts.length, 2, 'aucun rebond');
+  assert.equal(rebonds, 0, 'aucun rebond');
+  // la bulle va jusqu'au point de contact, puis se cale au centre de sa case
+  assert.deepEqual(pts.at(-2), contact);
+  assert.deepEqual(pts.at(-1), centre(0, 5));
 });
 
 test('trajectoire : les bords renvoient la bulle', () => {
@@ -253,4 +256,62 @@ test('génération : au moins 10 bulles, et 60 % de bulles ordinaires au moins',
     assert.ok(speciales <= toutes.length * 0.45, `niveau ${n} : ${speciales} spéciales sur ${toutes.length}`);
     assert.ok(L.paliers[2] > L.paliers[1]);
   }
+});
+
+// ---------- Mécaniques ajoutées : bocaux, ricochets, bocaux en or, caméléons, cerises ----------
+
+test('bocaux : ce qui tombe vaut plus sur les bords (× 3, × 2, × 1, × 2, × 3)', () => {
+  assert.deepEqual(BOCAUX, [3, 2, 1, 2, 3]);
+  assert.equal(bocalDe(0.5), 0);
+  assert.equal(bocalDe(LARGEUR / 2), 2);
+  assert.equal(bocalDe(LARGEUR - 0.5), 4);
+  const bord = { r: 5, c: 0, b: b(0) }, milieu = { r: 5, c: 5, b: b(0) };
+  assert.equal(pointsChute(bord), 60);
+  assert.equal(pointsChute(milieu), 20);
+  assert.equal(pointsChute(bord, true), 120, 'en or : le double');
+  assert.equal(pointsChute({ r: 5, c: 5, b: { type: 'fruit' } }), 100, 'une cerise vaut plus');
+});
+
+test('ricochet : un tir réussi après un rebond vaut × 1,5 ; un tir raté ne rapporte rien de plus', () => {
+  const ev = { eclatees: [1, 2, 3], tombees: [], poussins: 0 };
+  assert.equal(points(ev, 1, { rebonds: 1 }), 45);
+  assert.equal(points({ eclatees: [], tombees: [], poussins: 0 }, 0, { rebonds: 2 }), 0);
+  const { rebonds } = trajectoire(plateauVide(), (20 * Math.PI) / 180);
+  assert.ok(rebonds >= 1, 'un tir rasant touche le bord');
+});
+
+test('caméléon : il prend la couleur suivante après chaque tir', () => {
+  const p = plateauVide();
+  p[0][0] = b(0, { cameleon: true });
+  p[0][1] = b(2);
+  p[0][2] = b(4);
+  p[0][3] = b(0); // une autre bulle de la couleur 0, pour qu'elle reste sur le plateau
+  assert.equal(changerCameleons(p), 1);
+  assert.equal(p[0][0].k, 2);
+  changerCameleons(p);
+  assert.equal(p[0][0].k, 4);
+  changerCameleons(p);
+  assert.equal(p[0][0].k, 0, 'et ainsi de suite, parmi les couleurs du plateau');
+});
+
+test('cerises : elles n’éclatent pas, on les fait tomber ; le niveau est gagné quand il n’en reste plus', () => {
+  const p = plateauVide();
+  p[0][4] = b(1); p[0][5] = b(1);
+  p[1][4] = { type: 'fruit' }; // accrochée sous les deux bulles bleues
+  assert.equal(reussi(p, 'cueillir'), false);
+  const ev = resoudre(p, { r: 0, c: 6 }, { k: 1 });
+  assert.ok(ev.tombees.some((t) => t.b.type === 'fruit'), 'la cerise tombe dans un bocal');
+  assert.equal(nbFruits(p), 0);
+  assert.equal(reussi(p, 'cueillir'), true);
+});
+
+test('génération : niveaux « cerises » et caméléons, toujours gagnables', () => {
+  for (const n of [7, 17, 22, 32]) {
+    const L = genererNiveau(n);
+    assert.equal(L.objectif, 'cueillir', `niveau ${n}`);
+    assert.ok(nbFruits(L.plateau) >= 2);
+    assert.ok(L.variante >= 0, `niveau ${n} vérifié`);
+    assert.ok(L.tirs >= 12);
+  }
+  assert.ok([...cases(genererNiveau(32).plateau)].some(([, , v]) => v.cameleon), 'des caméléons plus loin');
 });

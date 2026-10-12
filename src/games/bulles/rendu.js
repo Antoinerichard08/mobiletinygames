@@ -149,9 +149,43 @@ export function dessinerPoussin(ctx, x, y, r, battement = 0) {
   ctx.fill();
 }
 
+/** Deux cerises sur leur tige, centrées en (x, y), dans un carré d'environ 2r. */
+export function dessinerCerises(ctx, x, y, r) {
+  ctx.save();
+  ctx.lineCap = 'round';
+  // les tiges et la feuille
+  ctx.strokeStyle = '#3E7A1E';
+  ctx.lineWidth = Math.max(1, r * 0.09);
+  ctx.beginPath();
+  ctx.moveTo(x - r * 0.38, y + r * 0.2); ctx.quadraticCurveTo(x - r * 0.2, y - r * 0.45, x + r * 0.08, y - r * 0.62);
+  ctx.moveTo(x + r * 0.36, y + r * 0.28); ctx.quadraticCurveTo(x + r * 0.3, y - r * 0.3, x + r * 0.08, y - r * 0.62);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(x + r * 0.32, y - r * 0.62, r * 0.26, r * 0.11, -0.4, 0, Math.PI * 2);
+  ctx.fillStyle = '#5BBF2A';
+  ctx.fill();
+  // les deux fruits, rouges et brillants
+  for (const [cx, cy] of [[x - r * 0.38, y + r * 0.34], [x + r * 0.36, y + r * 0.42]]) {
+    const g = ctx.createRadialGradient(cx - r * 0.1, cy - r * 0.12, r * 0.04, cx, cy, r * 0.36);
+    g.addColorStop(0, '#FF8A8A'); g.addColorStop(0.5, '#E0102A'); g.addColorStop(1, '#7A0010');
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.34, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx - r * 0.1, cy - r * 0.12, r * 0.07, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255, 255, 255, .8)'; ctx.fill();
+  }
+  ctx.restore();
+}
+
 /** Dessine une bulle « fixe » dans un canvas de cache. */
 function fabriquer(b, taille) {
   const can = nouveauCanvas(taille), ctx = can.getContext('2d'), r = taille / 2;
+  if (b.type === 'fruit') {
+    // une cerise prise dans une bulle de sucre (on la fait tomber dans les bocaux)
+    const g = ctx.createRadialGradient(r * 0.7, r * 0.6, r * 0.1, r, r, r);
+    g.addColorStop(0, 'rgba(255, 255, 255, .95)'); g.addColorStop(0.7, 'rgba(255, 228, 240, .85)'); g.addColorStop(1, 'rgba(232, 150, 190, .9)');
+    ctx.beginPath(); ctx.arc(r, r, r * 0.96, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
+    ctx.strokeStyle = '#D9488A'; ctx.lineWidth = Math.max(1, r * 0.08); ctx.stroke();
+    dessinerCerises(ctx, r, r * 0.98, r * 0.92);
+    return can;
+  }
   if (b.type === 'pierre') {
     bonbon(ctx, r, { base: '#9A97A8', clair: '#E4E1EE', fonce: '#55526A', raie: '#C9C5D9', motif: 'rayures' });
     ctx.strokeStyle = 'rgba(40, 36, 60, .5)';
@@ -314,6 +348,18 @@ export function dessinerBulle(ctx, x, y, r, b, t = 0, dpr = 1) {
     cache.set(k, img);
   }
   ctx.drawImage(img, x - r, y - r, r * 2, r * 2);
+  if (b.cameleon && !b.glace && !b.mystere) {
+    // caméléon : un anneau arc-en-ciel qui tourne (il changera de couleur après le prochain tir)
+    ctx.save();
+    const g = ctx.createConicGradient ? ctx.createConicGradient(t / 700, x, y) : null;
+    if (g) { PALETTE.forEach((p, i) => g.addColorStop(i / PALETTE.length, p.base)); g.addColorStop(1, PALETTE[0].base); }
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.93, 0, Math.PI * 2);
+    ctx.strokeStyle = g || '#fff';
+    ctx.lineWidth = Math.max(2, r * 0.2);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 /** Fond du plateau : dégradé violet-rose, reflets en diagonale et petites étincelles (dessiné une fois). */

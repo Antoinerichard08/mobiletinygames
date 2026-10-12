@@ -10,8 +10,11 @@
 //   { type: 'bombe' }   explose quand une voisine éclate
 //   { type: 'eclair' }  quand elle saute, toute sa rangée disparaît
 //   { type: 'etoile' }  touchée par une bulle de couleur, elle fait disparaître toutes les bulles de cette couleur
+//   { type: 'fruit' }   une cerise : ne s'éclate pas ; on la fait tomber dans les bocaux (objectif « cueillir »)
+//   cameleon: true      (sur une bulle de couleur) elle change de couleur après chaque tir
 // Bulles tirées : { k } (couleur), { tir: 'bombe' }, { tir: 'arc' } (prend la couleur du plus grand groupe touché),
 //                 { tir: 'feu' } (traverse tout jusqu'au plafond).
+// En bas du plateau, cinq bocaux recueillent ce qui tombe : × 3, × 2, × 1, × 2, × 3 (ceux des bords valent plus).
 
 export const COLONNES = 11;
 export const LARGEUR = 22;
@@ -19,6 +22,13 @@ export const SQ = Math.sqrt(3);
 export const RANGEES_MAX = 13; // si une bulle s'accroche sur la dernière rangée, la partie est perdue
 export const COULEURS = 6;
 export const BONUS_RESTE = 150; // points par bulle non utilisée en fin de niveau
+/** Les bocaux du bas : multiplicateur des points de ce qui tombe dedans (de gauche à droite). */
+export const BOCAUX = [3, 2, 1, 2, 3];
+/** Le bocal sous l'abscisse x (une bulle qui tombe descend tout droit). */
+export const bocalDe = (x) => Math.max(0, Math.min(BOCAUX.length - 1, Math.floor(x / (LARGEUR / BOCAUX.length))));
+/** Bocaux en or : après une série de SERIE_OR tirs réussis, les bocaux comptent double pendant TIRS_OR tirs. */
+export const SERIE_OR = 5;
+export const TIRS_OR = 3;
 
 export const largeurRangee = (r) => (r % 2 ? COLONNES - 1 : COLONNES);
 export const centre = (r, c) => ({ x: 1 + 2 * c + (r % 2 ? 1 : 0), y: 1 + r * SQ });
@@ -100,7 +110,8 @@ function proches(p, x, y, rayon2) {
 /**
  * Trajet d'une bulle tirée avec l'angle donné (radians, 0 = vers la droite, π/2 = tout droit vers le haut).
  * Avec `traverse` (boule de feu), la bulle ne s'arrête qu'au plafond et note tout ce qu'elle touche.
- * @returns {{ points: {x,y}[], cible: {r,c} | null, touchees: [r,c][] }}
+ * @returns {{ points: {x,y}[], cible: {r,c} | null, touchees: [r,c][], contact: {x,y} | null, rebonds: number }}
+ *   contact : là où la bulle touche (avant de se caler dans sa case) ; rebonds : nombre de bords touchés.
  */
 export function trajectoire(p, angle, traverse = false) {
   const a = Math.min(ANGLE_MAX, Math.max(ANGLE_MIN, angle));
@@ -109,23 +120,27 @@ export function trajectoire(p, angle, traverse = false) {
   const points = [{ x, y }];
   const touchees = new Map();
   const pas = 0.3, contact = 1.8 ** 2;
+  let rebonds = 0;
   for (let i = 0; i < 4000; i++) {
     x += dx * pas; y += dy * pas;
-    if (x < 1) { x = 2 - x; dx = -dx; points.push({ x, y }); }
-    else if (x > LARGEUR - 1) { x = 2 * (LARGEUR - 1) - x; dx = -dx; points.push({ x, y }); }
+    if (x < 1) { x = 2 - x; dx = -dx; rebonds++; points.push({ x, y }); }
+    else if (x > LARGEUR - 1) { x = 2 * (LARGEUR - 1) - x; dx = -dx; rebonds++; points.push({ x, y }); }
     const contre = y <= 1 ? [] : proches(p, x, y, contact);
     if (traverse) {
       for (const [r, c] of contre) touchees.set(`${r},${c}`, [r, c]);
-      if (y <= 1) { points.push({ x, y: 1 }); return { points, cible: null, touchees: [...touchees.values()] }; }
+      if (y <= 1) { points.push({ x, y: 1 }); return { points, cible: null, touchees: [...touchees.values()], contact: null, rebonds }; }
       continue;
     }
     if (y <= 1 || contre.length) {
-      const cible = accrocher(p, x, Math.max(1, y));
-      points.push(cible ? centre(cible.r, cible.c) : { x, y });
-      return { points, cible, touchees: [] };
+      const point = { x, y: Math.max(1, y) };
+      const cible = accrocher(p, x, point.y);
+      // la bulle va jusqu'au contact, puis se cale dans sa case
+      points.push(point);
+      if (cible) points.push(centre(cible.r, cible.c));
+      return { points, cible, touchees: [], contact: point, rebonds };
     }
   }
-  return { points, cible: null, touchees: [...touchees.values()] };
+  return { points, cible: null, touchees: [...touchees.values()], contact: null, rebonds };
 }
 
 // ---------- Résolution d'un tir ----------
@@ -253,10 +268,29 @@ export function resoudre(p, cible, tiree, touchees = []) {
 
 export const nbPoussins = (p) => [...cases(p)].filter(([, , b]) => b.poussin).length;
 
-/** Le niveau est-il réussi ? objectif 'vider' : plus aucune bulle de couleur ; 'liberer' : plus aucun poussin. */
+export const nbFruits = (p) => [...cases(p)].filter(([, , b]) => b.type === 'fruit').length;
+
+/**
+ * Le niveau est-il réussi ? 'vider' : plus aucune bulle de couleur ; 'liberer' : plus aucun poussin ;
+ * 'cueillir' : plus aucune cerise sur le plateau.
+ */
 export function reussi(p, objectif) {
   if (objectif === 'liberer') return nbPoussins(p) === 0;
+  if (objectif === 'cueillir') return nbFruits(p) === 0;
   return couleursPresentes(p).length === 0;
+}
+
+/** Après chaque tir, les bonbons caméléons prennent la couleur suivante parmi celles du plateau. */
+export function changerCameleons(p) {
+  const cs = couleursPresentes(p);
+  if (cs.length < 2) return 0;
+  let n = 0;
+  for (const [, , b] of cases(p)) {
+    if (!b.cameleon || !jouable(b)) continue;
+    b.k = cs[(cs.indexOf(b.k) + 1) % cs.length] ?? cs[0];
+    n++;
+  }
+  return n;
 }
 
 /** Une bulle est-elle descendue jusqu'à la dernière rangée ? */
@@ -267,9 +301,22 @@ export const debordement = (p) => p[RANGEES_MAX - 1].some(Boolean);
 /** Multiplicateur de série : chaque tir réussi d'affilée rapporte un peu plus (jusqu'à × 3). */
 export const multiplicateur = (serie) => Math.min(3, 1 + Math.max(0, serie - 1) * 0.5);
 
-export function points(ev, serie = 0) {
-  let s = ev.eclatees.length * 10 + ev.tombees.length * 20 + ev.poussins * 100;
+/** Points d'une bulle qui tombe dans un bocal (une cerise vaut plus). */
+export function pointsChute(t, or = false) {
+  const base = t?.b?.type === 'fruit' ? 100 : 20;
+  const bocal = t && t.r !== undefined ? BOCAUX[bocalDe(centre(t.r, t.c).x)] : 1;
+  return base * bocal * (or ? 2 : 1);
+}
+
+/**
+ * Points d'un tir. `rebonds` : un tir réussi après un ricochet sur le bord vaut × 1,5 ;
+ * `or` : les bocaux en or comptent double.
+ */
+export function points(ev, serie = 0, { rebonds = 0, or = false } = {}) {
+  let s = ev.eclatees.length * 10 + ev.poussins * 100;
+  for (const t of ev.tombees) s += pointsChute(t, or);
   if (ev.tombees.length >= 5) s += ev.tombees.length * 10; // belle chute
+  if (rebonds && reussite(ev)) s *= 1.5;
   return Math.round(s * multiplicateur(serie));
 }
 
@@ -278,4 +325,4 @@ export const reussite = (ev) => ev.eclatees.length + ev.tombees.length > 0;
 
 /** Charge de la jauge de bonus : une bulle spéciale arrive quand elle est pleine. */
 export const SEUIL_BONUS = 14;
-export const charge = (ev) => ev.eclatees.length + ev.tombees.length * 2;
+export const charge = (ev, rebonds = 0) => ev.eclatees.length + ev.tombees.length * 2 + (rebonds && reussite(ev) ? 3 : 0);

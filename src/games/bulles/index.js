@@ -1,6 +1,9 @@
 // Bulles : jeu de tir de bonbons. Règles dans moteur.js, niveaux générés (et vérifiés) par generateur.js,
 // dessin des bonbons dans rendu.js.
-// Visée simple : on pose le doigt où l'on veut envoyer la bulle (la trajectoire s'affiche), on lève le doigt : elle part.
+// Visée libre : on pose le doigt où l'on veut envoyer la bulle, une ligne pointillée montre le début du chemin
+// (de plus en plus courte au fil des niveaux), on lève le doigt : elle part, et ne se cale dans sa case qu'en arrivant.
+// Ce qui tombe atterrit dans cinq bocaux (× 3 sur les bords) ; un ricochet réussi vaut × 1,5 ; cinq tirs réussis
+// d'affilée dorent les bocaux (× 2 pendant trois tirs). Petits sons dans sons.js.
 // L'animation ne tourne que lorsque quelque chose bouge.
 import { $, chargerStyle, pluriel } from '../../core/outils.js';
 import { lire, ecrire } from '../../core/stockage.js';
@@ -14,9 +17,11 @@ import { modeDev } from '../../core/config.js';
 import {
   LARGEUR, SQ, RANGEES_MAX, DEPART, ANGLE_MIN, ANGLE_MAX, centre, cloner, cases, trajectoire, resoudre, reussi,
   debordement, couleursPresentes, nbPoussins, points, charge, SEUIL_BONUS, reussite, multiplicateur, BONUS_RESTE,
+  nbFruits, changerCameleons, BOCAUX, bocalDe, pointsChute, SERIE_OR, TIRS_OR,
 } from './moteur.js';
 import { genererNiveau, meilleurCoup, etoilesNiveau, niveauPourDefi } from './generateur.js';
 import { PALETTE, dessinerBulle, dessinerPoussin, fabriquerFond, reglerSymboles } from './rendu.js';
+import { son, reglerSons, reveillerSons } from './sons.js';
 
 chargerStyle(new URL('./bulles.css', import.meta.url));
 
@@ -24,10 +29,11 @@ const usine = creerTravailleur(new URL('./generateur-worker.js', import.meta.url
   ? { niveau: genererNiveau(d.n) }
   : { coup: meilleurCoup(d.plateau, d.courante, d.suivante, d.objectif) }));
 
-const HAUTEUR = DEPART.y + 2.6; // hauteur du terrain, en unités
+const HAUTEUR = DEPART.y + 3.6; // hauteur du terrain, en unités (les bocaux tout en bas)
+const BOCAL_Y = DEPART.y + 2.15; // le haut des bocaux
 const VITESSE = 0.05; // unités par milliseconde
 const TIRS_OFFERTS = 5;
-const OBJECTIFS = { vider: 'Videz le plateau', liberer: 'Libérez les poussins' };
+const OBJECTIFS = { vider: 'Videz le plateau', liberer: 'Libérez les poussins', cueillir: 'Faites tomber les cerises' };
 const BONUS = {
   bombe: { nom: 'Bombe', prix: 3, aide: 'Elle fait sauter tout ce qui l’entoure.' },
   arc: { nom: 'Arc-en-ciel', prix: 3, aide: 'Elle prend la couleur du plus grand groupe touché.' },
@@ -50,6 +56,8 @@ let prochain = null;
 let dejaFabrique = null; // le dernier niveau fabriqué, pour rejouer sans attendre
 let surRedim = null;
 let observateur = null; // surveille la hauteur du score et des commandes (styles chargés, message plus long…)
+let impact = null; // { x, y, t0 } : la bulle vient de se poser, ses voisines tremblent comme de la gelée
+let eclatsBocaux = []; // l'heure du dernier bonbon tombé dans chaque bocal (il s'illumine)
 
 // ---------- Hasard reproductible (pour qu'« Annuler » redonne les mêmes bulles) ----------
 function hasard() {
@@ -67,9 +75,10 @@ function nouvelleCouleur() {
 // ---------- Sauvegarde ----------
 const clePartie = () => (options.defi ? `bulles.defi.${options.defi.id}` : 'bulles.partie');
 function charger() {
-  profil = { niveauMax: 1, etoiles: {}, scores: {}, symboles: true, ...lire('bulles', {}) };
+  profil = { niveauMax: 1, etoiles: {}, scores: {}, symboles: true, sons: true, viseeLongue: false, ...lire('bulles', {}) };
   profil.scores ||= {};
   reglerSymboles(profil.symboles !== false);
+  reglerSons(profil.sons !== false);
   const p = lire(clePartie(), null);
   S = p && p.plateau && !p.fini && p.paliers ? p : null; // (une partie de l'ancienne version est ignorée)
 }
@@ -102,7 +111,7 @@ async function commencer(n) {
   S = {
     n, plateau: cloner(niveau.plateau), objectif: niveau.objectif, tirs: niveau.tirs, paliers: niveau.paliers,
     utilises: 0, score: 0, jauge: 0, bonus: 0, serie: 0, offerts: false, graine: (n * 2654435761) >>> 0, historique: [],
-    indices: 0, annulations: 0, poussinsDepart: nbPoussins(niveau.plateau), reserve: null,
+    indices: 0, annulations: 0, poussinsDepart: nbPoussins(niveau.plateau), fruitsDepart: nbFruits(niveau.plateau), reserve: null, or: 0,
   };
   S.courante = nouvelleCouleur();
   S.suivante = nouvelleCouleur();
@@ -208,22 +217,42 @@ function dessinerLanceur(t) {
   }
 }
 
-function dessinerGuide(angle, t, couleur = 'rgba(255,255,255,.95)') {
-  const feu = S.courante.tir === 'feu' && !conseil;
-  const { points: pts, cible } = trajectoire(S.plateau, angle, feu);
-  let reste = 0;
+/** Longueur de la ligne de visée (unités) : complète au début, puis de plus en plus courte. */
+function longueurGuide() {
+  if (profil.viseeLongue) return Infinity;
+  if (options.defi) return { facile: 16, moyen: 11, difficile: 8 }[options.defi.niveau] || 11;
+  return S.n <= 3 ? Infinity : S.n <= 10 ? 16 : S.n <= 25 ? 12 : 9;
+}
+
+/**
+ * La ligne de visée : des points qui avancent le long du chemin, jusqu'au contact (la case où la bulle se calera
+ * n'est pas montrée) et pas plus loin que longueurGuide(). L'indice (`complet`) montre tout, case comprise.
+ */
+function dessinerGuide(angle, t, couleur = 'rgba(255,255,255,.95)', complet = false) {
+  const feu = S.courante.tir === 'feu' && !complet;
+  const tr = trajectoire(S.plateau, angle, feu);
+  const fin = tr.contact ? tr.points.indexOf(tr.contact) : tr.points.length - 1;
+  const pts = tr.points.slice(0, fin + 1);
+  const L = complet ? Infinity : longueurGuide();
+  const ESPACE = 1.1;
+  let parcouru = 0, prochainPoint = mouvementReduit() ? ESPACE : ESPACE - ((t / 420) % ESPACE);
   ctx.fillStyle = feu ? 'rgba(255, 160, 40, .95)' : couleur;
-  for (let i = 1; i < pts.length; i++) {
+  for (let i = 1; i < pts.length && prochainPoint <= L; i++) {
     const a = pts[i - 1], b = pts[i];
     const long = Math.hypot(b.x - a.x, b.y - a.y);
-    for (let d = reste; d < long; d += 1.1) {
-      const f = d / long;
+    while (prochainPoint <= parcouru + long && prochainPoint <= L) {
+      const f = (prochainPoint - parcouru) / long;
+      // la fin d'une ligne courte s'efface doucement
+      ctx.globalAlpha = L === Infinity ? 1 : Math.max(0, Math.min(1, (L - prochainPoint) / (L * 0.35)));
       ctx.beginPath();
       ctx.arc(px(a.x + (b.x - a.x) * f), px(a.y + (b.y - a.y) * f), px(0.2), 0, Math.PI * 2);
       ctx.fill();
+      prochainPoint += ESPACE;
     }
-    reste = (reste + 1.1 - (long % 1.1)) % 1.1;
+    parcouru += long;
   }
+  ctx.globalAlpha = 1;
+  const cible = complet ? tr.cible : null;
   if (cible) {
     const c = centre(cible.r, cible.c);
     ctx.beginPath();
@@ -253,15 +282,53 @@ function dessiner(t = performance.now()) {
   ctx.lineTo(px(LARGEUR), yLimite);
   ctx.stroke();
   ctx.setLineDash([]);
+  dessinerBocaux(t);
+  // la bulle qui vient de se poser fait trembler ses voisines, comme de la gelée
+  const gelee = impact && !mouvementReduit() && t - impact.t0 < 520 ? (t - impact.t0) / 520 : null;
   for (const [r, c, b] of cases(S.plateau)) {
     const q = centre(r, c);
-    dessinerBulle(ctx, px(q.x), px(q.y), px(1), b, t, dpr);
+    let ox = 0, oy = 0;
+    if (gelee !== null) {
+      const dx = q.x - impact.x, dy = q.y - impact.y, d = Math.hypot(dx, dy);
+      if (d > 0.1 && d < 4.2) {
+        const a = 0.3 * (1 - d / 4.2) * Math.sin(gelee * Math.PI * 3) * (1 - gelee);
+        ox = (dx / d) * a; oy = (dy / d) * a;
+      }
+    }
+    dessinerBulle(ctx, px(q.x + ox), px(q.y + oy), px(1), b, t, dpr);
   }
-  if (conseil && t < conseil.jusqua) dessinerGuide(conseil.angle, t, 'rgba(255, 220, 60, .95)');
+  if (conseil && t < conseil.jusqua) dessinerGuide(conseil.angle, t, 'rgba(255, 220, 60, .95)', true);
   if (visee && !volante) dessinerGuide(visee.angle, t);
   if (volante) dessinerBulle(ctx, px(volante.x), px(volante.y), px(1), volante.b, t, dpr);
   dessinerLanceur(t);
   for (const e of effets) e.dessiner(t);
+}
+
+/** Les cinq bocaux du bas : ce qui tombe dedans rapporte × 3, × 2, × 1, × 2, × 3 (en or : le double). */
+function dessinerBocaux(t) {
+  const n = BOCAUX.length, l = LARGEUR / n, haut = BOCAL_Y, bas = HAUTEUR - 0.1;
+  const dore = S?.or > 0;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `700 ${px(1.1)}px "Atkinson Hyperlegible", sans-serif`;
+  for (let k = 0; k < n; k++) {
+    const x0 = k * l + 0.22, x1 = (k + 1) * l - 0.22;
+    const eclat = eclatsBocaux[k] && t - eclatsBocaux[k] < 350 ? 1 - (t - eclatsBocaux[k]) / 350 : 0;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(px(x0), px(haut), px(x1 - x0), px(bas - haut), [px(0.25), px(0.25), px(0.6), px(0.6)]);
+    else ctx.rect(px(x0), px(haut), px(x1 - x0), px(bas - haut));
+    ctx.fillStyle = dore ? `rgba(255, 205, 50, ${0.55 + eclat * 0.4})` : `rgba(255, 255, 255, ${0.16 + eclat * 0.5})`;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = dore ? '#FFF2A0' : 'rgba(255, 255, 255, .75)';
+    ctx.stroke();
+    const texte = `× ${BOCAUX[k] * (dore ? 2 : 1)}`, cx = px((x0 + x1) / 2), cy = px((haut + bas) / 2 + 0.05);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = dore ? '#9A5A00' : 'rgba(74, 30, 122, .8)';
+    ctx.strokeText(texte, cx, cy);
+    ctx.fillStyle = dore ? '#FFFBE0' : '#fff';
+    ctx.fillText(texte, cx, cy);
+  }
 }
 
 // ---------- Boucle d'animation (seulement quand ça bouge) ----------
@@ -276,7 +343,8 @@ function demarrer() {
     effets = effets.filter((e) => e.avancer(dt, t));
     dessiner(t);
     const besoin = volante || effets.length || visee || (conseil && t < conseil.jusqua) || S?.courante.tir
-      || (S && [...cases(S.plateau)].some(([, , b]) => b.type === 'etoile' || b.type === 'bombe'));
+      || (impact && t - impact.t0 < 600)
+      || (S && [...cases(S.plateau)].some(([, , b]) => b.type === 'etoile' || b.type === 'bombe' || b.cameleon));
     anim = besoin && racine ? requestAnimationFrame(boucle) : null;
   };
   anim = requestAnimationFrame(boucle);
@@ -327,17 +395,34 @@ function eclater(x, y, b, delai) {
   });
 }
 
-function tomber(x, y, b, delai) {
-  let t0 = -delai, vy = -0.004 - Math.random() * 0.006, vx = (Math.random() - 0.5) * 0.008, yy = y, xx = x;
+/**
+ * Un bonbon décroché tombe tout droit dans le bocal du dessous (il se dandine un peu en tombant).
+ * `annonce` : { gains: Map bocal → points, montres: Set } pour n'écrire le gain qu'une fois par bocal.
+ */
+function tomber(x, y, b, delai, annonce = null) {
+  let t0 = -delai, vy = -0.004 - Math.random() * 0.004, yy = y;
+  const phase = Math.random() * 6, k = bocalDe(x);
   effets.push({
     avancer(dt) {
       t0 += dt;
       if (t0 < 0) return true;
-      vy += 0.00006 * dt; xx += vx * dt; yy += vy * dt;
-      if (yy > HAUTEUR + 2) { particules(xx, HAUTEUR - 0.5, PALETTE[b.k]?.base || '#C9C5D9', 4); return false; }
-      return true;
+      vy += 0.00006 * dt; yy += vy * dt;
+      if (yy < BOCAL_Y + 0.4) return true;
+      eclatsBocaux[k] = performance.now();
+      particules(x, BOCAL_Y + 0.2, b.type === 'fruit' ? '#E0102A' : PALETTE[b.k]?.base || '#C9C5D9', 4, 0.7);
+      if (annonce?.gains.has(k)) {
+        son.bocal(BOCAUX[k]);
+        if (!annonce.montres.has(k)) {
+          annonce.montres.add(k);
+          texteVolant(x, BOCAL_Y - 0.6, `+${annonce.gains.get(k)}`, BOCAUX[k] >= 3 ? '#FFE14D' : '#ffffff', 1.1);
+        }
+      }
+      return false;
     },
-    dessiner(t) { dessinerBulle(ctx, px(xx), px(yy), px(1), b, t, dpr); },
+    dessiner(t) {
+      if (t0 < 0) { dessinerBulle(ctx, px(x), px(yy), px(1), b, t, dpr); return; }
+      dessinerBulle(ctx, px(x + Math.sin(t0 / 90 + phase) * 0.12), px(yy), px(1), b, t, dpr);
+    },
   });
 }
 
@@ -467,14 +552,16 @@ function surSuivante(ev) {
 function tirer(angle) {
   if (enCours || !S) return;
   const feu = S.courante.tir === 'feu';
-  const { points: pts, cible, touchees } = trajectoire(S.plateau, angle, feu);
+  const { points: pts, cible, touchees, contact, rebonds } = trajectoire(S.plateau, angle, feu);
   if (!cible && !feu) return;
+  son.tir();
   S.historique.push(JSON.stringify({ ...S, historique: undefined }));
   if (S.historique.length > 8) S.historique.shift();
   enCours = true;
   conseil = null;
   visee = null;
-  volante = { points: pts, i: 1, x: pts[0].x, y: pts[0].y, b: S.courante, cible, touchees };
+  // les points entre le départ et le contact sont les rebonds sur les bords
+  volante = { points: pts, i: 1, x: pts[0].x, y: pts[0].y, b: S.courante, cible, touchees, rebonds, finRebonds: contact ? pts.indexOf(contact) : pts.length - 1 };
   dire('');
   demarrer();
 }
@@ -485,7 +572,9 @@ function avancer(dt) {
     const but = volante.points[volante.i];
     const d = Math.hypot(but.x - volante.x, but.y - volante.y);
     if (d <= reste) {
-      volante.x = but.x; volante.y = but.y; reste -= d; volante.i++;
+      volante.x = but.x; volante.y = but.y; reste -= d;
+      if (volante.i < volante.finRebonds) { son.rebond(); particules(but.x, but.y, '#FFFFFF', 4, 0.5); }
+      volante.i++;
       if (volante.i >= volante.points.length) { atterrir(); return; }
     } else {
       volante.x += ((but.x - volante.x) / d) * reste;
@@ -497,14 +586,25 @@ function avancer(dt) {
 }
 
 async function atterrir() {
-  const { cible, b, touchees } = volante;
+  const { cible, b, touchees, rebonds } = volante;
   volante = null;
   const ev = resoudre(S.plateau, cible, b, touchees);
+  const orActif = S.or > 0;
   const estBonus = Boolean(b.tir) && S.bonusEnCours;
   if (!estBonus) S.utilises++;
   S.bonusEnCours = false;
   S.achete = false;
   const c0 = cible ? centre(cible.r, cible.c) : { x: LARGEUR / 2, y: 3 };
+  impact = cible ? { x: c0.x, y: c0.y, t0: performance.now() } : null;
+  if (!reussite(ev)) son.pose();
+  else son.eclats(ev.eclatees.length + Math.min(3, ev.tombees.length), (S.serie || 0) + 1);
+  if (ev.explosions.length || ev.eclairs.length) son.explosion();
+  // ce qui tombe : les points de chaque bocal, écrits une fois quand le premier bonbon y arrive
+  const annonce = { gains: new Map(), montres: new Set() };
+  for (const t of ev.tombees) {
+    const k = bocalDe(centre(t.r, t.c).x);
+    annonce.gains.set(k, (annonce.gains.get(k) || 0) + pointsChute(t, orActif));
+  }
   ev.eclatees.forEach(({ r, c, b: v }) => {
     const q = centre(r, c);
     eclater(q.x, q.y, v, Math.hypot(q.x - c0.x, q.y - c0.y) * 22);
@@ -512,9 +612,11 @@ async function atterrir() {
   });
   ev.tombees.forEach(({ r, c, b: v }, i) => {
     const q = centre(r, c);
-    tomber(q.x, q.y, v, 120 + i * 18);
+    tomber(q.x, q.y, v, 120 + i * 18, annonce);
     if (v.poussin) poussinLibere(q.x, q.y, 300);
   });
+  const cerises = ev.tombees.filter((x) => x.b.type === 'fruit').length;
+  if (cerises) texteVolant(c0.x, c0.y - 1.4, cerises > 1 ? `${cerises} cerises cueillies !` : 'Une cerise cueillie !', '#FFB0C0', 1.3);
   ev.explosions.forEach(({ r, c }) => { const q = centre(r, c); onde(q.x, q.y); });
   ev.etoiles.forEach(({ r, c }) => { const q = centre(r, c); onde(q.x, q.y, '255, 255, 255'); texteVolant(q.x, q.y, 'Toute la couleur !', '#FFF6B0', 1.2); });
   ev.eclairs.forEach(({ r }) => eclair(r));
@@ -522,8 +624,16 @@ async function atterrir() {
   ev.reveles.forEach(({ r, c }) => { const q = centre(r, c); particules(q.x, q.y, '#FFFFFF', 6); });
   // série : chaque tir réussi d'affilée rapporte un peu plus
   S.serie = reussite(ev) ? (S.serie || 0) + 1 : 0;
-  const gain = points(ev, S.serie);
+  const gain = points(ev, S.serie, { rebonds, or: orActif });
   S.score += gain;
+  if (rebonds && reussite(ev)) texteVolant(c0.x, c0.y + 1.6, 'Ricochet ! × 1,5', '#9BE7FF', 1.2);
+  // bocaux en or : cinq tirs réussis d'affilée, et ils comptent double pendant trois tirs
+  if (S.or > 0) S.or--;
+  if (reussite(ev) && S.serie % SERIE_OR === 0) {
+    S.or = TIRS_OR;
+    texteVolant(LARGEUR / 2, BOCAL_Y - 2.2, 'Bocaux en or ! × 2', '#FFE14D', 1.6);
+    son.or();
+  }
   if (gain) texteVolant(c0.x, c0.y, `+${gain}`, ev.tombees.length >= 5 ? '#FFE14D' : '#ffffff', ev.tombees.length >= 5 ? 1.7 : 1.3);
   if (multiplicateur(S.serie) > 1) texteVolant(LARGEUR / 2, 13.5, `Série × ${multiplicateur(S.serie).toLocaleString('fr-FR')}`, '#9BFFB0', 1.4);
   if (ev.tombees.length >= 5) texteVolant(LARGEUR / 2, 10, 'Délicieux !', '#FFE14D', 2);
@@ -531,7 +641,7 @@ async function atterrir() {
   if (ev.poussins) texteVolant(c0.x, c0.y - 2, ev.poussins > 1 ? `${ev.poussins} poussins libérés !` : 'Un poussin libéré !', '#FFE37A', 1.3);
   if (ev.tirsBonus) { S.tirs += ev.tirsBonus; texteVolant(DEPART.x + 4, DEPART.y - 2, `+${ev.tirsBonus} bulles !`, '#9BFFB0', 1.3); }
   // jauge : une bulle spéciale offerte quand elle est pleine
-  S.jauge += charge(ev);
+  S.jauge += charge(ev, rebonds);
   let bonusPret = false;
   if (S.jauge >= SEUIL_BONUS) { S.jauge = 0; bonusPret = true; }
   if (S.reserve) { S.courante = S.reserve; S.reserve = null; }
@@ -541,6 +651,11 @@ async function atterrir() {
     S.courante = { tir: S.bonus++ % 2 ? 'arc' : 'bombe' };
     S.bonusEnCours = true;
     texteVolant(DEPART.x, DEPART.y - 3, S.courante.tir === 'bombe' ? 'Une bombe offerte !' : 'Un arc-en-ciel offert !', '#FFE14D', 1.3);
+    son.bonus();
+  }
+  // les caméléons prennent leur nouvelle couleur (une petite gerbe pour qu'on le remarque)
+  if (!reussi(S.plateau, S.objectif) && changerCameleons(S.plateau)) {
+    for (const [r, c, v] of cases(S.plateau)) if (v.cameleon) { const q = centre(r, c); particules(q.x, q.y, PALETTE[v.k].base, 5, 0.6); }
   }
   // une couleur qui n'existe plus sur le plateau est remplacée
   if (S.courante.k !== undefined && !couleursPresentes(S.plateau).includes(S.courante.k)) S.courante = nouvelleCouleur();
@@ -559,6 +674,7 @@ async function atterrir() {
 async function victoire() {
   enCours = true;
   // les bonbons restants (pierres…) tombent, puis chaque bulle non utilisée rapporte un bonus
+  son.victoire();
   for (const [r, c, b] of [...cases(S.plateau)]) { const q = centre(r, c); tomber(q.x, q.y, b, Math.random() * 300); S.plateau[r][c] = null; }
   demarrer();
   const restantes = Math.max(0, S.tirs - S.utilises);
@@ -621,6 +737,7 @@ async function plusDeTirs() {
 
 function defaite(raison) {
   enCours = true;
+  son.defaite();
   ecrire(clePartie(), null);
   const fin = { ...S, fini: true };
   S = fin;
@@ -655,20 +772,27 @@ function choixPanneau(el) {
 
 async function panneauDebut(premier) {
   const titre = options.defi ? `Aventure · niveau ${options.defi.numero}` : `Niveau ${S.n}`;
-  const objectif = `${OBJECTIFS[S.objectif]}${S.objectif === 'liberer' ? ` (${pluriel(S.poussinsDepart, 'poussin')})` : ''}`;
-  const speciales = new Set([...cases(S.plateau)].map(([, , b]) => (b.type !== 'bulle' ? b.type : b.k2 !== undefined ? 'bicolore' : b.mystere ? 'mystere' : b.glace ? 'glace' : b.plus ? 'plus' : '')).filter(Boolean));
+  const objectif = `${OBJECTIFS[S.objectif]}${S.objectif === 'liberer' ? ` (${pluriel(S.poussinsDepart, 'poussin')})` : S.objectif === 'cueillir' ? ` (${pluriel(S.fruitsDepart, 'cerise')})` : ''}`;
+  const speciales = new Set([...cases(S.plateau)].map(([, , b]) => (b.type !== 'bulle' ? b.type : b.k2 !== undefined ? 'bicolore' : b.mystere ? 'mystere' : b.glace ? 'glace' : b.plus ? 'plus' : b.cameleon ? 'cameleon' : '')).filter(Boolean));
   const AIDE = {
     etoile: 'Étoile : touchez-la et toute la couleur disparaît.', eclair: 'Éclair : quand il saute, sa rangée entière disparaît.',
     bombe: 'Bombe : elle explose quand ses voisines éclatent.', pierre: 'Pierre : elle n’éclate pas, faites-la tomber.',
     glace: 'Glace : faites éclater une voisine pour la libérer.', mystere: 'Mystère : sa couleur apparaît quand une voisine éclate.',
     bicolore: 'Bicolore : elle compte pour ses deux couleurs.', plus: '« +3 » : trois bulles de plus quand elle éclate.',
+    fruit: 'Cerise : elle n’éclate pas. Faites éclater ce qui la tient : elle tombe dans un bocal.',
+    cameleon: 'Caméléon : il change de couleur après chaque tir. Visez-le au bon moment !',
   };
+  // chaque sorte de bonbon, et les bocaux, ne sont expliqués que la première fois qu'on les rencontre
+  const nouvelles = [...speciales].filter((k) => AIDE[k] && !(profil.vus || []).includes(k));
+  const astuce = !profil.vuBocaux;
+  if (nouvelles.length || astuce) { profil.vus = [...(profil.vus || []), ...nouvelles]; profil.vuBocaux = true; sauver(); }
   const el = panneau(`
     <h3 class="bl-titre-panneau">${titre}</h3>
     <p class="bl-objectif-panneau">${objectif}</p>
     <p class="bl-bulles-panneau"><b>${S.tirs}</b> bulles</p>
-    ${[...speciales].filter((k) => AIDE[k]).map((k) => `<p class="bl-aide">${AIDE[k]}</p>`).join('')}
-    ${premier ? '<p class="bl-aide">Posez le doigt là où vous voulez envoyer la bulle : la ligne montre son chemin. Levez le doigt pour tirer. Trois bonbons de la même couleur éclatent !</p>' : ''}
+    ${nouvelles.map((k) => `<p class="bl-aide">${AIDE[k]}</p>`).join('')}
+    ${premier ? '<p class="bl-aide">Posez le doigt là où vous voulez envoyer la bulle : la ligne montre le début de son chemin. Levez le doigt pour tirer. Trois bonbons de la même couleur éclatent !</p>' : ''}
+    ${astuce ? '<p class="bl-aide">Ce qui tombe atterrit dans les bocaux du bas : ceux des bords rapportent le plus. Un ricochet sur le bord avant d’éclater : × 1,5 ! Cinq tirs réussis d’affilée, et les bocaux deviennent en or.</p>' : ''}
     <div class="bl-boutons"><button class="bl-rond grand" data-r="go"><span class="ic">▶</span><span>C’est parti !</span></button></div>`);
   await choixPanneau(el);
 }
@@ -731,6 +855,8 @@ async function pause() {
       <button class="bl-ligne-menu" data-r="recommencer">Recommencer le niveau</button>
       ${options.defi ? '' : '<button class="bl-ligne-menu" data-r="niveaux">Choisir un niveau</button>'}
       <button class="bl-ligne-menu" data-r="symboles">Symboles sur les bonbons : ${profil.symboles !== false ? 'oui' : 'non'}</button>
+      <button class="bl-ligne-menu" data-r="sons">Sons : ${profil.sons !== false ? 'oui' : 'non'}</button>
+      <button class="bl-ligne-menu" data-r="visee">Ligne de visée : ${profil.viseeLongue ? 'longue' : 'normale'}</button>
       <button class="bl-ligne-menu" data-r="quitter">Quitter le jeu</button>
     </div>`, 'pause');
   const r = await choixPanneau(el);
@@ -742,6 +868,14 @@ async function pause() {
     reglerSymboles(profil.symboles);
     sauver();
     dessiner();
+  } else if (r === 'sons') {
+    profil.sons = profil.sons === false;
+    reglerSons(profil.sons);
+    sauver();
+    if (profil.sons) son.bonus();
+  } else if (r === 'visee') {
+    profil.viseeLongue = !profil.viseeLongue;
+    sauver();
   } else if (r === 'quitter') revenir(options.defi ? 'niveaux' : '');
 }
 
@@ -826,7 +960,9 @@ function dessinerHud() {
   const etoiles = etoilesNiveau(S, S.score, S.offerts);
   const objectif = S.objectif === 'liberer'
     ? `Poussins : <b>${S.poussinsDepart - nbPoussins(S.plateau)} / ${S.poussinsDepart}</b>`
-    : OBJECTIFS.vider;
+    : S.objectif === 'cueillir'
+      ? `Cerises : <b>${S.fruitsDepart - nbFruits(S.plateau)} / ${S.fruitsDepart}</b>`
+      : OBJECTIFS.vider;
   hud.innerHTML = `
     <div class="bl-barre">
       <span class="bl-pastille">${options.defi ? 'Aventure' : `Niveau ${S.n}`}</span>
@@ -838,7 +974,7 @@ function dessinerHud() {
     </div>
     <div class="bl-infos">
       <p class="bl-objectif">${objectif}</p>
-      <p class="bl-score"><b>${S.score}</b> pts${multiplicateur(S.serie || 0) > 1 ? ` <span class="bl-serie">× ${multiplicateur(S.serie).toLocaleString('fr-FR')}</span>` : ''}</p>
+      <p class="bl-score"><b>${S.score}</b> pts${multiplicateur(S.serie || 0) > 1 ? ` <span class="bl-serie">× ${multiplicateur(S.serie).toLocaleString('fr-FR')}</span>` : ''}${S.or > 0 ? ` <span class="bl-or">or × 2</span>` : ''}</p>
       <p class="bl-tirs ${restantes <= 3 ? 'peu' : ''}" aria-label="${restantes} bulles restantes"><b>${restantes}</b><span>bulles</span></p>
     </div>
     <span class="bl-jauge" aria-label="Bonus offert bientôt"><i style="width:${Math.min(100, (S.jauge / SEUIL_BONUS) * 100)}%"></i></span>`;
@@ -878,20 +1014,21 @@ function construire() {
   ctx = toile.getContext('2d');
   dimensionner();
   toile.addEventListener('pointerdown', (e) => {
+    reveillerSons();
     if (enCours || !S) return;
     if (surSuivante(e)) { echanger(); return; }
-    toile.setPointerCapture(e.pointerId);
+    try { toile.setPointerCapture(e.pointerId); } catch { /* pointeur inconnu : on vise quand même */ }
     const a = angleVers(e);
     visee = a === null ? null : { angle: a };
     demarrer();
   });
   toile.addEventListener('pointermove', (e) => {
-    if (!toile.hasPointerCapture(e.pointerId)) return;
+    if (!visee && !toile.hasPointerCapture(e.pointerId)) return;
     const a = angleVers(e);
     visee = a === null ? null : { angle: a };
   });
   toile.addEventListener('pointerup', (e) => {
-    if (!toile.hasPointerCapture(e.pointerId)) return;
+    if (!visee && !toile.hasPointerCapture(e.pointerId)) return;
     const a = angleVers(e);
     visee = null;
     if (a !== null) tirer(a);

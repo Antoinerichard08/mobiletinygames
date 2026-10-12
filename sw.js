@@ -47,6 +47,7 @@ const FICHIERS = [
   'src/games/bulles/index.js',
   'src/games/bulles/moteur.js',
   'src/games/bulles/rendu.js',
+  'src/games/bulles/sons.js',
   'src/games/dames/dames.css',
   'src/games/dames/ia-worker.js',
   'src/games/dames/ia.js',
