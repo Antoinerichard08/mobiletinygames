@@ -35,6 +35,7 @@ let conseil = null;
 let occupe = false; // animation ou préparation en cours : on ignore les touches
 let prochaine = null; // { niveau, promesse } : donne préparée à l'avance
 let observateur = null;
+let surveillance = null; // la hauteur des commandes change (message, « Tout ranger ») : le tapis se recale
 
 const cleSauvegarde = () => (options.defi ? `solitaire.defi.${options.defi.id}` : 'solitaire');
 const cleCarte = (c) => `c${c.s}-${c.r}`;
@@ -131,12 +132,20 @@ function mesures() {
     const cote = parseFloat(getComputedStyle(racine).getPropertyValue('--cote')) || 190;
     cw = Math.min((window.innerWidth - cote - 60 - 6 * gap) / 7, hauteurDispo / 3.4);
   } else {
-    hauteurDispo = Math.max(cw * 6, window.innerHeight * 0.68);
+    // le tapis prend toute la hauteur libre : l'écran moins la barre du haut, les commandes et la marge du bas
+    const haut = table.getBoundingClientRect().top + window.scrollY;
+    let marge = 0;
+    for (let n = table.parentElement; n && n !== document.documentElement; n = n.parentElement) {
+      const s = getComputedStyle(n);
+      marge += (parseFloat(s.paddingBottom) || 0) + (parseFloat(s.marginBottom) || 0);
+    }
+    const dessous = $('.sol-side', racine).offsetHeight + 12;
+    hauteurDispo = Math.max(cw * 6, window.innerHeight - haut - dessous - marge - 2);
   }
   cw = Math.max(34, Math.floor(cw));
   const ch = Math.round(cw * 1.4);
-  const colonneMax = hauteurDispo - ch - Math.round(cw * 0.3) - 20;
-  return { cw, ch, gap, colonneMax };
+  const colonneMax = hauteurDispo - ch - Math.round(cw * 0.3) - 34;
+  return { cw, ch, gap, colonneMax, hauteurDispo, paysage: paysage() };
 }
 
 function decalages(col, m) {
@@ -154,8 +163,11 @@ function decalages(col, m) {
 function dessiner() {
   if (!racine || !E) return;
   const J = E.jeu;
+  $('#sol-finish', racine).hidden = !(peutFinirSeul(J) && !E.gagne);
+  $('#sol-info', racine).textContent = `${NOMS[E.niveau]} · ${J.tirage === 3 ? '3 cartes' : '1 carte'} à la fois · ${pluriel(J.moves, 'coup')}`;
   const m = mesures();
   const table = $('#sol-table', racine);
+  table.style.minHeight = `${Math.round(m.hauteurDispo)}px`; // le tapis va jusqu'en bas de l'écran
   table.style.setProperty('--cw', `${m.cw}px`);
   table.style.setProperty('--gap', `${m.gap}px`);
   table.style.width = paysage() ? `${7 * m.cw + 6 * m.gap + 20}px` : '';
@@ -215,8 +227,6 @@ function dessiner() {
   table.innerHTML = h;
 
   $('#sol-undo', racine).disabled = !E.historique.length || occupe || E.gagne; // une partie gagnée ne se rejoue pas
-  $('#sol-finish', racine).hidden = !(peutFinirSeul(J) && !E.gagne);
-  $('#sol-info', racine).textContent = `${NOMS[E.niveau]} · ${J.tirage === 3 ? '3 cartes' : '1 carte'} à la fois · ${pluriel(J.moves, 'coup')}`;
 }
 
 // ---------- Animations des coups ----------
@@ -470,8 +480,8 @@ function construire() {
           <button class="btn" id="sol-undo">Annuler</button>
           <button class="btn" id="sol-hint">Indice</button>
           <button class="btn" id="sol-collect">Monter</button>
+          <button class="btn" id="sol-new">${options.defi ? 'Recommencer' : 'Nouvelle partie'}</button>
         </div>
-        <button class="btn" id="sol-new">${options.defi ? 'Recommencer' : 'Nouvelle partie'}</button>
         <p class="tip">Touchez une carte, puis l’endroit où la poser. Touchez-la deux fois pour qu’elle se range toute seule.</p>
       </div>
     </div>`;
@@ -488,6 +498,14 @@ function construire() {
   $('#sol-new', racine).addEventListener('click', demanderNouvelle);
   observateur = () => { if (!occupe) dessiner(); };
   window.addEventListener('resize', observateur);
+  let hauteurCommandes = 0;
+  surveillance = new ResizeObserver(([e]) => {
+    const h = Math.round(e.contentRect.height);
+    if (h === hauteurCommandes) return;
+    hauteurCommandes = h;
+    if (!occupe && E) dessiner();
+  });
+  surveillance.observe($('.sol-side', racine));
 }
 
 // ---------- Module ----------
@@ -524,6 +542,7 @@ export default {
 
   demonter() {
     window.removeEventListener('resize', observateur);
+    surveillance?.disconnect();
     racine = null;
   },
 };
